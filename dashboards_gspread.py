@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def append_to_sheets(data_dict):
+def append_to_sheets(result):
     """
     data_dict: {'timestamp': ..., 'provider': ..., 'tps': ..., 'is_correct': ...}
     """
@@ -22,15 +22,16 @@ def append_to_sheets(data_dict):
 
         # 3. 데이터 행 추가 (리스트 형태로 변환)
         row = [
-            data_dict.get('timestamp'),
-            data_dict.get('provider'),
-            data_dict.get('model_requested'),
-            data_dict.get('tps'),
-            data_dict.get('ttft'),
-            data_dict.get('is_correct'),
-            data_dict.get('system_fingerprint'),
-            data_dict.get('request_id')
-        ]
+        result.get("timestamp"),
+        result.get("provider"),
+        result.get("model_requested"),
+        round(result.get("tps", 0), 2),
+        round(result.get("ttft", 0), 3),
+        result.get("is_correct"),
+        result.get("difficulty"),       # 이 부분이 잘 들어가는지 확인!
+        result.get("subject"),
+        result.get("system_fingerprint") # 이 부분이 잘 들어가는지 확인!
+    ]
         sheet.append_row(row)
         print("Google Sheets 전송 완료!")
         

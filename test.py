@@ -15,16 +15,17 @@ load_dotenv()
 
 import openai
 from anthropic import Anthropic
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 oa_client = openai.OpenAI()
 ant_client = Anthropic()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+client_google = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # 데이터셋 로드
 print("데이터셋 로딩 중... (최초 실행 시 시간이 걸릴 수 있습니다)")
-mmlu_pro = load_dataset("TIGER-Lab/MMLU-Pro", split="test", trust_remote_code=True)
-mmlu_easy = load_dataset("cais/mmlu", "all", split="test", trust_remote_code=True)
+mmlu_pro = load_dataset("TIGER-Lab/MMLU-Pro", split="test")
+mmlu_easy = load_dataset("cais/mmlu", "all", split="test")
 
 # 2. CoT 전용 시스템 프롬프트 설정
 SYSTEM_PROMPT = """You are a logical reasoning assistant. For every question, you must think step-by-step. 
@@ -49,7 +50,8 @@ def record_benchmark(provider, model_name, prompt):
         "full_content": "",
         "reasoning": "",
         "parsed_answer": "",
-        "system_fingerprint": None
+        "system_fingerprint": "N/A", # None 대신 N/A로 초기화하면 시트에서 확인이 쉽습니다.
+        "raw_response": None
     }
 
     start_time = time.time()
@@ -63,12 +65,18 @@ def record_benchmark(provider, model_name, prompt):
                 messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
                 stream=True
             )
+            chunks = []
             for chunk in response:
                 if first_token_time is None: first_token_time = time.time()
                 if chunk.choices and chunk.choices[0].delta.content:
                     metrics["full_content"] += chunk.choices[0].delta.content
-                if hasattr(chunk, 'system_fingerprint'):
+                
+                # fingerprint가 들어있는 청크를 찾으면 metrics에 고정
+                if hasattr(chunk, 'system_fingerprint') and chunk.system_fingerprint:
                     metrics["system_fingerprint"] = chunk.system_fingerprint
+                
+                chunks.append(chunk.model_dump())
+            metrics["raw_response"] = chunks
 
         elif provider == "anthropic":
             with ant_client.messages.stream(
@@ -80,14 +88,31 @@ def record_benchmark(provider, model_name, prompt):
                 for text in stream.text_stream:
                     if first_token_time is None: first_token_time = time.time()
                     metrics["full_content"] += text
+                
+                # 최종 메시지에서 메타데이터 추출
+                final_msg = stream.get_final_message()
+                metrics["raw_response"] = final_msg.model_dump()
+                # Anthropic은 모델ID가 지문 역할을 합니다
+                metrics["system_fingerprint"] = final_msg.model
 
         elif provider == "google":
-            model = genai.GenerativeModel(model_name, system_instruction=SYSTEM_PROMPT)
-            response = model.generate_content(prompt, stream=True)
-            for chunk in response:
-                if first_token_time is None: first_token_time = time.time()
-                metrics["full_content"] += chunk.text
-
+            response = client_google.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    max_output_tokens=2000
+                )
+            )
+            if first_token_time is None: first_token_time = time.time()
+            metrics["full_content"] = response.text
+            
+            # 구글 전용 메타데이터 저장
+            metrics["system_fingerprint"] = response.model_version
+            metrics["raw_response"] = {
+                "model_version": response.model_version, 
+                "usage": str(response.usage_metadata)
+            }
         # --- 지표 계산 및 파싱 ---
         end_time = time.time()
         metrics["ttft"] = first_token_time - start_time if first_token_time else 0
@@ -118,28 +143,57 @@ def test_single_cycle():
     print(f"=== 테스트 사이클 시작: {datetime.now()} ===")
     
     targets = [
-        {"provider": "openai", "model": "gpt-4o"},
-        {"provider": "anthropic", "model": "claude-3-5-sonnet-20240620"},
-        {"provider": "google", "model": "gemini-1.5-pro"}
+        # OpenAI: 성능은 5.0보다 월등하고 5.2보다는 훨씬 저렴한 모델
+        {"provider": "openai", "model": "gpt-5.1-2025-11-13"}, 
+        
+        # Anthropic: 작년 말 출시 이후 '황금 밸런스'로 불리는 4.5 소네트
+        {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929"}, 
+        
+        # Google: 어제 3.1 라인업 공개와 함께 표준이 된 프로 모델
+        {"provider": "google", "model": "gemini-3.1-pro-preview"} 
     ]
     
     # 테스트용으로 각 난이도별 딱 1문제씩만 추출
-    pro_samples = mmlu_pro.select(random.sample(range(len(mmlu_pro)), 1))
-    easy_samples = mmlu_easy.select(random.sample(range(len(mmlu_easy)), 1))
+    # MMLU-Pro (Hard) 1문제 추출
+    raw_pro = mmlu_pro.select(random.sample(range(len(mmlu_pro)), 1))[0]
+    # MMLU (Easy) 1문제 추출
+    raw_easy = mmlu_easy.select(random.sample(range(len(mmlu_easy)), 1))[0]
+
+    # 공통 규격으로 변환
+    test_problems = [
+        {
+            "difficulty": "hard",
+            "question": raw_pro["question"],
+            "options": raw_pro["options"],
+            "answer": str(raw_pro["answer"]).upper(),
+            "subject": raw_pro.get("category", "unknown") # .get("category")로 수정
+        },
+        {
+            "difficulty": "easy",
+            "question": raw_easy["question"],
+            "options": raw_easy["choices"],
+            "answer": chr(65 + int(raw_easy["answer"])),
+            "subject": raw_easy.get("subject", "unknown") # Easy는 subject 유지
+        }
+    ]
     
     all_results = []
 
-    for category, probs in [("hard", pro_samples), ("easy", easy_samples)]:
-        prob = probs[0]
+    # 이제 통합된 test_problems 리스트를 순회합니다.
+    for prob in test_problems:
         question = f"Question: {prob['question']}\nOptions: {prob['options']}\nFollow the system prompt format."
         
         for target in targets:
-            print(f"[{target['provider'].upper()}] {category} 문제 테스트 중...")
+            print(f"[{target['provider'].upper()}] {prob['difficulty']} 문제 테스트 중...")
             result = record_benchmark(target['provider'], target['model'], question)
             
             if result:
-                result["difficulty"] = category
-                result["is_correct"] = 1 if result["parsed_answer"] == str(prob["answer"]).upper() else 0
+                result["difficulty"] = prob["difficulty"]
+                result["subject"] = prob["subject"]
+                result["correct_answer"] = prob["answer"]
+                
+                # 정규화된 정답(A, B, C...)과 모델이 뱉은 정답(parsed_answer) 비교
+                result["is_correct"] = 1 if result["parsed_answer"] == prob["answer"] else 0
                 all_results.append(result)
                 
                 # 구글 시트 전송 테스트

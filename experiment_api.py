@@ -9,6 +9,9 @@ from datetime import datetime
 from dotenv import load_dotenv
 from datasets import load_dataset
 from dashboards_gspread import append_to_sheets
+import openai
+from anthropic import Anthropic
+import google.generativeai as genai
 
 # 1. 초기 설정
 load_dotenv()
@@ -18,10 +21,6 @@ print("데이터셋 로드 중...")
 mmlu_pro = load_dataset("TIGER-Lab/MMLU-Pro", split="test", trust_remote_code=True)
 mmlu_easy = load_dataset("cais/mmlu", "all", split="test", trust_remote_code=True)
 
-# API 클라이언트 사전 초기화
-import openai
-from anthropic import Anthropic
-import google.generativeai as genai
 
 # 각 API 키가 .env에 잘 있는지 확인용
 oa_client = openai.OpenAI()
