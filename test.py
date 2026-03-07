@@ -144,13 +144,13 @@ def test_single_cycle():
     
     targets = [
         # OpenAI: 성능은 5.0보다 월등하고 5.2보다는 훨씬 저렴한 모델
-        {"provider": "openai", "model": "gpt-5.1-2025-11-13"}, 
+        {"provider": "openai", "model": "gpt-5-nano-2025-08-07"}, 
         
         # Anthropic: 작년 말 출시 이후 '황금 밸런스'로 불리는 4.5 소네트
-        {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929"}, 
+        {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"}, 
         
         # Google: 어제 3.1 라인업 공개와 함께 표준이 된 프로 모델
-        {"provider": "google", "model": "gemini-3.1-pro-preview"} 
+        {"provider": "google", "model": "gemini-3.1-flash-lite-preview"} 
     ]
     
     # 테스트용으로 각 난이도별 딱 1문제씩만 추출
