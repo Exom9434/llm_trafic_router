@@ -1,0 +1,539 @@
+[
+  {
+    "difficulty": "hard",
+    "question": "Apply the Graeffe's root squaring method to find the roots of the following equation x^3 + 3x^2 - 4 = 0 correct to two decimals. What's the sum of these roots?",
+    "options": [
+      "3",
+      "-6",
+      "4",
+      "0",
+      "1.5",
+      "2.5",
+      "-2.5",
+      "-4",
+      "-1.5",
+      "-3"
+    ],
+    "answer": "J",
+    "subject": "math"
+  },
+  {
+    "difficulty": "hard",
+    "question": "What expression can be used to show 270,240 written in expanded form?",
+    "options": [
+      "200,000 + 70,000 + 2,000 + 400",
+      "200,000 + 70,000 + 200 + 40",
+      "200,000 + 70,000 + 200 + 400",
+      "200,000 + 70,000 + 2,400",
+      "200,000 + 70,000 + 2,000 + 40",
+      "200,000 + 7,000 + 200 + 4",
+      "200,000 + 7,000 + 200 + 40",
+      "200,000 + 70,000 + 20,000 + 40",
+      "270,000 + 200 + 40",
+      "200,000 + 7,000 + 20,000 + 40"
+    ],
+    "answer": "B",
+    "subject": "math"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Which set of integers is in order from least to greatest?",
+    "options": [
+      "11, −9, 7, −6, −3",
+      "7, 11, −6, −3, −9",
+      "−3, 7, −9, −6, 11",
+      "−6, −3, 7, 11, −9",
+      "−9, −3, 7, 11, −6",
+      "−3, −6, 7, 11, –9",
+      "−9, 7, −6, −3, 11",
+      "−9, −6, −3, 7, 11",
+      "11, 7, −3, −6, −9",
+      "7, −9, −6, −3, 11"
+    ],
+    "answer": "H",
+    "subject": "math"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Let M be a 5 x 5 real matrix. Exactly four of the following five conditions on M are equivalent to each other. Which of the five conditions is equivalent to NONE of the other four?",
+    "options": [
+      "The column vectors of M form a basis for R^5.",
+      "For any two distinct column vectors u and v of M, the set {u, v} is linearly independent.",
+      "The trace of M is nonzero.",
+      "The eigenvalues of M are all nonzero.",
+      "The homogeneous system Mx = 0 has only the trivial solution.",
+      "The determinant of M is nonzero.",
+      "The inverse of M exists.",
+      "The transpose of M is equal to M.",
+      "The rank of M is 5.",
+      "The system of equations Mx = b has a unique solution for each real 5 x 1 column vector b."
+    ],
+    "answer": "B",
+    "subject": "math"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Find 3 over 4 − 1 over 8.",
+    "options": [
+      "5 over 8",
+      "9 over 16",
+      "7 over 16",
+      "21 over 32",
+      "1",
+      "1 over 2",
+      "3 over 8",
+      "11 over 16",
+      "13 over 32",
+      "2 over 8"
+    ],
+    "answer": "A",
+    "subject": "math"
+  },
+  {
+    "difficulty": "hard",
+    "question": "An unknown charge sits on a conducting solid sphere of radius $10 \\mathrm{~cm}$. If the electric field $15 \\mathrm{~cm}$ from the center of the sphere has the magnitude $3.0 \\times 10^3 \\mathrm{~N} / \\mathrm{C}$ and is directed radially inward, what is the net charge on the sphere?\n",
+    "options": [
+      "$-11.0\\mathrm{nC}$",
+      "$-12.0\\mathrm{nC}$",
+      "$-5.0$$\\mathrm{nC}$",
+      "$-7.5$$\\mathrm{nC}$ ",
+      "$-6.0\\mathrm{nC}$",
+      "$-8.5$$\\mathrm{nC}$",
+      "$-9.0\\mathrm{nC}$",
+      "$-10.0$$\\mathrm{nC}$",
+      "$-4.0\\mathrm{nC}$",
+      "$-2.5\\mathrm{nC}$"
+    ],
+    "answer": "D",
+    "subject": "physics"
+  },
+  {
+    "difficulty": "hard",
+    "question": "determine the ratio of the radius of a uranium-238 nucleus to the radius of a helium-4 nucleus.",
+    "options": [
+      "4.8",
+      "7.1",
+      "5.5",
+      "1.8",
+      "4.2",
+      "3.9",
+      "6.3",
+      "3.0",
+      "2.5",
+      "2.0"
+    ],
+    "answer": "F",
+    "subject": "physics"
+  },
+  {
+    "difficulty": "hard",
+    "question": "A man stands at the center of a turntable, holding his arms extended horizontally with a 10-lb weight in each hand. He is set rotating about a vertical axis with an angular velocity of one revolution in 2 sec. Find his new angular velocity if he drops his hands to his sides. The moment of inertia of the man may be assumed constant and equal to 4 slug-ft^2. The original distance of the weights from the axis is 3 ft, and their final distance is 6 in.",
+    "options": [
+      "2.13 pi rad/sec",
+      "1.2 pi rad/sec",
+      "4 pi rad/sec",
+      "2.67 pi rad/sec",
+      "3.2 pi rad/sec",
+      "1.5 pi rad/sec",
+      "3 pi rad/sec",
+      "1.75 pi rad/sec",
+      "2.5 pi rad/sec",
+      "2.8 pi rad/sec"
+    ],
+    "answer": "A",
+    "subject": "physics"
+  },
+  {
+    "difficulty": "hard",
+    "question": "A neutron consists of one \"up\" quark of charge $+2 e / 3$ and two \"down\" quarks each having charge $-e / 3$. If we assume that the down quarks are $2.6 \\times 10^{-15} \\mathrm{~m}$ apart inside the neutron, what is the magnitude of the electrostatic force between them?\n",
+    "options": [
+      "$1.9N$",
+      "$2.8N$",
+      "$2.5N$",
+      "$3.8$$N$ ",
+      "$3.2N$",
+      "$4.3N$",
+      "$4.6N$",
+      "$6.3N$",
+      "$5.1N$",
+      "$0.9N$"
+    ],
+    "answer": "D",
+    "subject": "physics"
+  },
+  {
+    "difficulty": "hard",
+    "question": "What equal positive charges would have to be placed on Earth and on the Moon to neutralize their gravitational attraction?",
+    "options": [
+      "$3.3 \\times 10^{13} \\mathrm{C}$",
+      "$3.5$$10^{13} \\mathrm{C}$",
+      "$4.2$$10^{13} \\mathrm{C}$",
+      "$1.2 \\times 10^{14} \\mathrm{C}$",
+      "$7.8 \\times 10^{13} \\mathrm{C}$",
+      "$2.5 \\times 10^{13} \\mathrm{C}$",
+      "$8.3 \\times 10^{12} \\mathrm{C}$",
+      "$5.7$$10^{13} \\mathrm{C}$",
+      "$9.4 \\times 10^{13} \\mathrm{C}$"
+    ],
+    "answer": "H",
+    "subject": "physics"
+  },
+  {
+    "difficulty": "hard",
+    "question": "An oxygen cylinder at 35 psia and 80°F contains 0.9 lb of oxygen. If nitrogen is added to the cylinder to increase the cylinder pressure to 45 psia at the same temperature, find the mass of nitrogen added.",
+    "options": [
+      "0.045 lb",
+      "0.225 lb",
+      "0.9 lb",
+      "0.00804 lb",
+      "0.115 lb",
+      "0.012 lb",
+      "0.3 lb",
+      "0.5 lb",
+      "0.02813 lb",
+      "0.75 lb"
+    ],
+    "answer": "B",
+    "subject": "engineering"
+  },
+  {
+    "difficulty": "hard",
+    "question": "A 4-pole commutator machine has 124 lap coils each having two turns. The flux per pole is 0.015 weber. Calculate: (a) The d.c. voltage appearing across quadrature brushes (b) The r.m.s. voltage with three sets of brushes per pole pair for 3-phase working and with relative field / conductor speed = 1400 rev/min.",
+    "options": [
+      "a) 180 V, b) 100 V",
+      "a) 160 V, b) 90 V",
+      "a) 186 V, b) 106.5 V",
+      "a) 195 V, b) 115 V",
+      "a) 205 V, b) 125 V",
+      "a) 200 V, b) 110 V",
+      "a) 175 V, b) 95 V",
+      "a) 170 V, b) 110 V",
+      "a) 190 V, b) 105 V",
+      "a) 210 V, b) 120 V"
+    ],
+    "answer": "C",
+    "subject": "engineering"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Air at 75°F and 14.6psiaflows through a rectangular duct of 1 × 2 ft cross-section. If the flow rate is 4800cfm, determine the pressure drop per 100 ft of flow. For duct K_s = 0.00015 ft.",
+    "options": [
+      "2.65 psf",
+      "2.15 psf",
+      "1.75 psf",
+      "2.35 psf",
+      "3.00 psf",
+      "1.95 psf",
+      "1.80 psf",
+      "2.50 psf",
+      "2.20 psf",
+      "2.07 psf"
+    ],
+    "answer": "J",
+    "subject": "engineering"
+  },
+  {
+    "difficulty": "hard",
+    "question": "The drag of a ship in water is assumed to depend on the Reynolds number and the Froude number so that [drag / {(1/2)(\\rhoV^2A)}] = f [{(\\rhoVD) / \\mu}, (V^2 / gD)] It is proposed that a model one-tenth the size of a full-scale ship be tested in water and the results be used to predict the performance of the full-scale ship. Is this feasible?",
+    "options": [
+      "both Froude and Reynolds numbers need to be greater in the prototype",
+      "only Weber numbers need to be equal for model and prototype",
+      "the attainment of dynamic similarity in model and prototype is not possible",
+      "both Froude and Reynolds numbers need to be smaller in the model",
+      "similitude can be achieved by matching the Euler numbers only",
+      "the attainment of dynamic similarity in model and prototype is possible",
+      "dynamic similarity is irrelevant for predicting performance",
+      "the attainment of geometric similarity in model and prototype is sufficient",
+      "only Reynolds numbers need to be equal for model and prototype",
+      "only Froude numbers need to be equal for model and prototype"
+    ],
+    "answer": "C",
+    "subject": "engineering"
+  },
+  {
+    "difficulty": "hard",
+    "question": "A 15 hp internal-combustion engine runs at 1400 rpm and rotates a grinding disc at 700 rpm under smooth conditions. If a triple strand no. 50 roller chain is to transmit power, calculate the number of teeth on both sprockets and the kind of lubrication needed for rust-proof operation.",
+    "options": [
+      "Driving sprocket = 11 teeth, Driven sprocket = 22 teeth, Lubrication type = B",
+      "Driving sprocket = 7 teeth, Driven sprocket = 14 teeth, Lubrication type = D",
+      "Driving sprocket = 6 teeth, Driven sprocket = 12 teeth, Lubrication type = C",
+      "Driving sprocket = 14 teeth, Driven sprocket = 28 teeth, Lubrication type = A",
+      "Driving sprocket = 15 teeth, Driven sprocket = 30 teeth, Lubrication type = D",
+      "Driving sprocket = 12 teeth, Driven sprocket = 24 teeth, Lubrication type = C",
+      "Driving sprocket = 9 teeth, Driven sprocket = 18 teeth, Lubrication type = B",
+      "Driving sprocket = 13 teeth, Driven sprocket = 26 teeth, Lubrication type = A",
+      "Driving sprocket = 8 teeth, Driven sprocket = 16 teeth, Lubrication type = C",
+      "Driving sprocket = 10 teeth, Driven sprocket = 20 teeth, Lubrication type = A"
+    ],
+    "answer": "G",
+    "subject": "engineering"
+  },
+  {
+    "difficulty": "hard",
+    "question": "This question refers to the following information.\nOne of the rights which the freeman has always guarded with most jealous care is that of enjoying the rewards of his own industry. Realizing that the power to tax is the power to destroy and that the power to take a certain amount of property or of income is only another way of saying that for a certain proportion of his time a citizen must work for the government, the authority to impose a tax on the people has been most carefully guarded.… A government which lays taxes on the people not required by urgent necessity and sound public policy is not a protector of liberty, but an instrument of tyranny. It condemns the citizen to tyranny. One of the first signs of the breaking down of free government is a disregard by the taxing power of the right of the people to their own property.… Unless the people can enjoy that reasonable security in the possession of their property, which is guaranteed by the Constitution, against unreasonable taxation, freedom is at an end.… With us economy is imperative. It is a full test of our national character.… It is always the people who toil that pay.\n—Calvin Coolidge, \"Economy in the Interest of All,\" June 30, 1924\nWhich of the following presidents would be most likely to share Coolidge's sentiments?",
+    "options": [
+      "Dwight D. Eisenhower",
+      "John F. Kennedy",
+      "Lyndon B. Johnson",
+      "George W. Bush",
+      "Ronald Reagan",
+      "Bill Clinton",
+      "Barack Obama",
+      "Franklin D. Roosevelt",
+      "Jimmy Carter",
+      "Richard Nixon"
+    ],
+    "answer": "E",
+    "subject": "history"
+  },
+  {
+    "difficulty": "hard",
+    "question": "From which of the following primates do humans descend?",
+    "options": [
+      "bonobos",
+      "orangutans",
+      "gibbons",
+      "chimpanzees",
+      "baboons",
+      "gorillas",
+      "capuchin monkeys",
+      "lemurs",
+      "tarsiers",
+      "none of the above"
+    ],
+    "answer": "J",
+    "subject": "history"
+  },
+  {
+    "difficulty": "hard",
+    "question": "This question refers to the following information.\nOur leaders talk about stopping aggression from the north, but this was a struggle among groups of Vietnamese until we intervened. We seem bent upon saving the Vietnamese from Ho Chi Minh even if we have to kill them and demolish their country to do it. As the native people survey bombed-out villages, women and children burned by napalm, rice crops destroyed and cities overrun with our military personnel, they are doubtless saying secretly of the Vietcong guerillas and of the American forces, \"A plague on both your houses.\" … Stop the bombing, north and south, end search and destroy offensive sweeps, and confine our military action to holding operations on the ground. Bombing the north has failed to halt or seriously check the flow of troops to the south and may, in fact, have prompted a much greater war effort by Hanoi.\n—Senator George McGovern, \"The Lessons of Vietnam,\" April 25, 1967\nPolitical discord during the Vietnam War most closely resembled the political dissensions during which of the following?",
+    "options": [
+      "The American Revolutionary War",
+      "World War I",
+      "The War of 1812",
+      "The American Civil War",
+      "The Cold War",
+      "The Korean War",
+      "World War II",
+      "The Spanish-American War",
+      "The Mexican War",
+      "The Persian Gulf War"
+    ],
+    "answer": "I",
+    "subject": "history"
+  },
+  {
+    "difficulty": "hard",
+    "question": "The earliest-known use of bronze is found in:",
+    "options": [
+      "China.",
+      "Africa.",
+      "Australia.",
+      "North America.",
+      "South America.",
+      "Europe.",
+      "Antarctica.",
+      "Greece.",
+      "the Indus Valley."
+    ],
+    "answer": "A",
+    "subject": "history"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Evidence has been found at the Asikli Höyük site in Central Turkey for the domestication of which species within a few centuries after 10,400 years ago?",
+    "options": [
+      "pigs",
+      "cats",
+      "horses",
+      "goats",
+      "dogs",
+      "ducks",
+      "rabbits",
+      "chickens",
+      "sheep",
+      "cattle"
+    ],
+    "answer": "I",
+    "subject": "history"
+  },
+  {
+    "difficulty": "hard",
+    "question": "During spring break, a private boarding school was deserted while students and teachers were away on vacation. A guidance counselor remained on campus because he was working on a research project. After working late one night, the counselor decided to enter the room of a student from a very wealthy family. The counselor was rummaging through the student's room looking for something valuable to steal. Under the bed, he noticed an expensive suitcase. The counselor opened the suitcase and found an express mail envelope. The counselor knew that the student's father often sent money to his son in express mail envelopes. The counselor opened the envelope and saw that it contained a large quantity of white powder, which he suspected to be heroin. The counselor telephoned the police, and an officer was dispatched to the school. The counselor handed the officer the envelope, which he transported to the police station. At the station house, the officer opened the envelope and sent a sampling of the substance to the police lab. Tests confirmed the substance to be heroin. The police did not secure a search warrant before confiscating and opening the envelope. The student was thereafter arrested and charged with unlawful possession of a controlled dangerous substance. The student's attorney has filed a motion to suppress the heroin from evidence. The motion will most likely be",
+    "options": [
+      "granted, because the police should have secured a warrant before seizing the envelope.",
+      "denied, because the counselor, as a school employee, was in loco parentis.",
+      "granted, because the police did not have probable cause to test the substance.",
+      "granted, because the police should have secured a warrant before opening the envelope.",
+      "granted, because the student was not present during the search.",
+      "granted, because the student's room is considered private property.",
+      "denied, because the search was conducted by a private party.",
+      "denied, because the discovery of the substance was incidental to the counselor's actions.",
+      "denied, because the school has a policy allowing searches of student rooms.",
+      "denied, because the counselor had a reasonable suspicion of illegal activity."
+    ],
+    "answer": "G",
+    "subject": "law"
+  },
+  {
+    "difficulty": "hard",
+    "question": "A state has passed a law that provides that only residents of the state who are citizens of the United States can own agricultural land in the state. A out- of-state farmer who is a U. S. citizen has contracted, subsequent to the aforementioned law, to purchase a farm from a landowner, which is located in the state. The landowner, who is a resident of the state, has been informed by his attorney that his sales agreement with the farmer is null and void under state law. Which of the following is the best constitutional argument to contest the validity of the state statute?",
+    "options": [
+      "The privileges and immunities clause of the Fourteenth Amendment.",
+      "The commerce clause under Article I, Section 8.",
+      "The due process clause of the Fifth Amendment.",
+      "The equal protection clause of the Fourteenth Amendment.",
+      "The free exercise clause of the First Amendment.",
+      "The privileges and immunities clause under Article IV, Section 2.",
+      "The national property power provision under Article IV, Section 3.",
+      "The contract clause prohibition against a state from enacting any law that will impair the obligation of contracts.",
+      "The establishment clause of the First Amendment.",
+      "The takings clause of the Fifth Amendment."
+    ],
+    "answer": "F",
+    "subject": "law"
+  },
+  {
+    "difficulty": "hard",
+    "question": "A wife and her husband were having dinner at a restaurant when the wife excused herself to go to the bathroom. The restaurant was owned and operated by a chef. As the wife was walking past a table where another customer was seated, she slipped and fell on an egg roll that had been lying on the floor for quite some time, although the chef was unaware that it had fallen onto the floor. When she fell, her head struck a serving tray that was located in the aisle. The fall caused the wife to suffer a severe concussion. The customer knew that the egg roll was on the floor, and although he could have done so, he did not warn the wife. If the wife asserts a claim against the chef for the injuries she suffered from the fall, she will most likely",
+    "options": [
+      "recover, because the customer was negligent in not warning her about the egg roll.",
+      "not recover, because the customer could have prevented the injury by warning the wife of the presences of the egg roll.",
+      "recover, because the egg roll was on the floor for a substantial period of time before the accident.",
+      "not recover, because she should have been more careful while walking.",
+      "recover, because the egg roll on the floor constituted an unsafe condition of the premises.",
+      "not recover, because the chef was not directly responsible for the egg roll being on the floor.",
+      "not recover, because the chef did not know that the egg roll was on the floor.",
+      "not recover, because it is not the chef's responsibility to monitor the floor at all times.",
+      "recover, because the serving tray was placed in a dangerous location."
+    ],
+    "answer": "C",
+    "subject": "law"
+  },
+  {
+    "difficulty": "hard",
+    "question": "The operator of a hot dog stand sent the following purchase order to a bakery: \"We are expecting an increase in business over the upcoming holidays. Please ship immediately 36 dozen 10-inch hot dog buns at your current list price of $6 per dozen. \"The day after receiving the purchase order, the bakery shipped 24 dozen 10-inch hot dog buns and 12 dozen 8-inch hot dog buns. The owner of the bakery had instructed his staff to include a message that the bakery did not have enough 10-inch hot dog buns to fill the order, so they were including the 8-inch hot dog buns as an accommodation. However, the shipping department forgot to include the message with the shipment. Which of the following is the most accurate statement regarding the operator's legal rights following receipt of the hot dog buns?",
+    "options": [
+      "The operator may either accept or reject all of the hot dog buns upon seasonable notice to the bakery, but it cannot accept only the 10-inch hot dog buns without the bakery's approval.",
+      "The operator may either accept or reject all of the hot dog buns, or, provided the bakery gives seasonable notice that the shipment was made for accommodation only, the operator may accept any combination of hot dog buns and reject the rest.",
+      "The operator may either accept or reject all of the hot dog buns, or accept the 10-inch buns and reject the 8-inch buns, but only with written approval from the bakery.",
+      "The operator may accept the 10-inch buns and reject the 8-inch buns, without any obligation to notify the bakery.",
+      "The operator may accept any combination of hot dog buns without the need to notify the bakery.",
+      "The operator can only reject the shipment if the bakery provides notice that the shipment was made for accommodation only.",
+      "The operator may either accept or reject all of the hot dog buns, or accept the 10-inch buns and reject the 8-inch buns, but it cannot accept any combination of the hot dog buns.",
+      "The operator can reject the 8-inch buns and demand a refund, without providing any notice to the bakery.",
+      "The operator may either accept or reject all of the hot dog buns, or accept any commercial unit and reject the rest, but must give the bakery seasonable notice of either total or partial rejection.",
+      "The operator must accept all of the hot dog buns, and cannot reject any part of the shipment."
+    ],
+    "answer": "I",
+    "subject": "law"
+  },
+  {
+    "difficulty": "hard",
+    "question": "While undergoing a routine plastic surgery procedure, a patient died on the operating table. The patient's husband is suing the plastic surgeon alleging malpractice. Two years later, at trial, the defense called another doctor as an expert witness. The expert witness testified that the patient's death was a freak accident and that the surgeon's performance met the highest standards for medical care. On cross-examination, the plaintiff's attorney brings out the fact that, one week before trial, the expert witness and the surgeon signed an agreement to become partners in an outpatient plastic surgery clinic. The plaintiff's attorney suggests that the expert's testimony was awfully convenient and likely motivated by his desire to maintain a good relationship with the defendant. The defendant then calls another surgeon at the hospital as a witness. He is asked to tell the jury about a conversation he had with the expert inunediately following the patient's death. The witness stated that \"the expert told me the patient's death was a textbook example of a freak accident and there was nothing anyone could have done to prevent it. \"On objection to this testimony, defendant's attorney seeks a ruling on the admissibility of this question and answer. The trial judge should",
+    "options": [
+      "overrule the objection, because a witness's veracity may be rehabilitated by a prior consistent statement.",
+      "sustain the objection, because the testimony is hearsay.",
+      "sustain the objection, because a prior consistent statement cannot be used to rehabilitate a witness's testimony.",
+      "overrule the objection, because the expert's statement is a statement against interest.",
+      "overrule the objection, because the statement supports the expert witness's credibility.",
+      "sustain the objection, because the statement is speculation and not based on factual evidence.",
+      "sustain the objection, because the statement is prejudicial and may unfairly influence the jury.",
+      "overrule the objection, because the statement was made immediately after the incident, making it a present sense impression and therefore not hearsay.",
+      "sustain the objection, because the witness's statement is unrelated to the case at hand.",
+      "overrule the objection, because the expert's statement is an exception to the hearsay rule as it was made in the course of his professional duty."
+    ],
+    "answer": "A",
+    "subject": "law"
+  },
+  {
+    "difficulty": "hard",
+    "question": "What happens to neurotransmitters once they have \"done their job?\"",
+    "options": [
+      "Neurotransmitters diffuse away and are exhaled",
+      "Neurotransmitters are converted into cellular energy",
+      "Neurotransmitters replicate to enhance the initial signal",
+      "Neurotransmitters are destroyed",
+      "Neurotransmitters are released into the bloodstream",
+      "Neurotransmitters are used to build new synapses",
+      "Neurotransmitters remain active indefinitely",
+      "Neurotransmitters are stored in the cell nucleus for later use",
+      "Neurotransmitters are deactivated through re-uptake or enzyme action",
+      "Neurotransmitters bond permanently to the receptors"
+    ],
+    "answer": "I",
+    "subject": "psychology"
+  },
+  {
+    "difficulty": "hard",
+    "question": "When using the Premack Principle to modify a behavior, the reinforcer is:",
+    "options": [
+      "a verbal praise or encouragement.",
+      "a behavior that occurs frequently.",
+      "a specific reward given after the desired behavior.",
+      "a stimulus that is artificially created.",
+      "a generalized conditioned reinforcer.",
+      "a stimulus that naturally elicits the desired behavior.",
+      "a behavior that occurs rarely.",
+      "a negative reinforcement.",
+      "a punishment that follows the undesired behavior.",
+      "applied intermittently."
+    ],
+    "answer": "B",
+    "subject": "psychology"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Jim and Tim are identical (monozygotic) twins that were reared together. Scott and Michael are fraternal (dizygotic) twins that were reared together. Given the results of heritability studies of intelligence, which of the following outcomes are most likely to emerge?",
+    "options": [
+      "Neither pair will have similar IQs.",
+      "Scott and Michael will have very similar IQs.",
+      "Jim and Tim will have similar IQs, but Scott and Michael will not.",
+      "Jim will have a similar IQ to Scott, and Tim will have a similar IQ to Michael.",
+      "Scott and Michael will have vastly different IQs.",
+      "Jim and Tim will have very similar IQs.",
+      "IQ cannot be measured in twins.",
+      "Both pairs will have very similar IQs.",
+      "Both pairs will have vastly different IQs.",
+      "Jim and Tim will have vastly different IQs."
+    ],
+    "answer": "F",
+    "subject": "psychology"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Any substance that can have a negative impact on fetal development is ___________.",
+    "options": [
+      "A genotype",
+      "A neurotoxin",
+      "A controlled substance",
+      "A carcinogen",
+      "A mutagen",
+      "Only a problem in the first 6 weeks",
+      "A pathogen",
+      "A teratogen",
+      "An Apgar",
+      "An antigen"
+    ],
+    "answer": "H",
+    "subject": "psychology"
+  },
+  {
+    "difficulty": "hard",
+    "question": "Which best represents the path of an impulse over a reflex arc?",
+    "options": [
+      "interneuron, afferent neuron, efferent neuron, receptor, effector",
+      "effector, sensory neuron, afferent neuron, interneuron, receptor",
+      "sensory neuron, interneuron, afferent neuron, efferent neuron, effector",
+      "sensory neuron, afferent neuron, interneuron, efferent neuron, receptor",
+      "receptor, efferent neuron, interneuron, afferent neuron, affector",
+      "efferent neuron, interneuron, afferent neuron, receptor, effector",
+      "receptor, afferent neuron, efferent neuron, interneuron, effector",
+      "receptor, efferent neuron, afferent neuron, interneuron, effector",
+      "afferent neuron, receptor, efferent neuron, interneuron, effector",
+      "receptor, afferent neuron, interneuron, efferent neuron, effector"
+    ],
+    "answer": "J",
+    "subject": "psychology"
+  }
+]
