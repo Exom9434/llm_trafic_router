@@ -45,12 +45,27 @@ def load_questions() -> list:
         return json.load(f)
 
 
-def append_to_csv(result, filename="benchmark_results.csv"):
-    """결과를 CSV에 한 줄씩 누적 저장"""
+def get_time_period() -> str:
+    """현재 시각이 peak인지 nonpeak인지 반환"""
+    hour = datetime.now().hour
+    # 02:00 KST = peak, 19:00 KST = nonpeak (스케줄러 기준)
+    if hour == 2:
+        return "peak"
+    elif hour == 19:
+        return "nonpeak"
+    else:
+        # 수동 실행 등 스케줄 외 시간대 처리
+        return "peak" if 6 <= hour < 18 else "nonpeak"
+
+def append_to_csv(result, period: str, filename_prefix="benchmark_results"):
+    """결과를 날짜/시간대별 CSV에 누적 저장"""
+    date_str = datetime.now().strftime("%Y%m%d")
+    filename = f"{filename_prefix}_{date_str}_{period}.csv"
+    
     df = pd.DataFrame([result])
     header = not os.path.exists(filename)
     df.to_csv(filename, mode='a', index=False, header=header, encoding='utf-8-sig')
-
+    return filename
 
 # ──────────────────────────────────────────────
 # 3. 핵심 벤치마크 함수
@@ -121,37 +136,41 @@ def record_benchmark(provider, model_name, prompt, repeat_index=1):
                 metrics["output_tokens"]  = final_msg.usage.output_tokens  # 정확한 토큰 수
 
         elif provider == "google":
-            # 스트리밍 모드로 변경하여 TTFT와 TPS를 공정하게 측정
             response = google_client.models.generate_content_stream(
                 model=model_name,
-                contents=[prompt], # 리스트 형태 권장
+                contents=[prompt],
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     temperature=0,
                     max_output_tokens=1000
+                    )
                 )
-            )
+            last_chunk = None
             for chunk in response:
                 if first_token_time is None:
                     first_token_time = time.time()
-                metrics["full_content"] += chunk.text
-            
-            # 최종 메타데이터에서 토큰 추출
-            metrics["output_tokens"] = response.usage_metadata.candidates_token_count
+                if chunk.text:
+                    metrics["full_content"] += chunk.text
+                last_chunk = chunk  # ← 마지막 청크에 usage_metadata 있음
+
+            # 마지막 청크에서 토큰 수 추출
+            if last_chunk and last_chunk.usage_metadata:
+                metrics["output_tokens"] = last_chunk.usage_metadata.candidates_token_count or 0
             metrics["raw_response"] = {"model_version": model_name}
+
             
             
         elif provider == "qwen":
             response = qwen_client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": prompt}
-            ],
-            temperature=0,
-            stream=True,
-            stream_options={"include_usage": True}
-        )
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt}
+                ],
+                temperature=0,
+                stream=True,
+                stream_options={"include_usage": True}
+            )
             chunks = []
             for chunk in response:
                 if first_token_time is None:
@@ -199,13 +218,13 @@ def record_benchmark(provider, model_name, prompt, repeat_index=1):
 # ──────────────────────────────────────────────
 # 4. 실험 사이클
 # ──────────────────────────────────────────────
-def run_experiment():
+def run_experiment(period: str="unknown"):
     targets = [
-    {"provider": "openai",    "model": "gpt-4o-mini-2024-07-18"}, # 수정
-    {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
-    {"provider": "google",    "model": "gemini-3.1-flash-lite-preview"},
-    {"provider": "qwen",      "model": "qwen3.5-flash"}           # 수정
-]
+        {"provider": "openai",    "model": "gpt-4o-mini-2024-07-18"}, # 수정
+        {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+        {"provider": "google",    "model": "gemini-3.1-flash-lite-preview"},
+        {"provider": "qwen",      "model": "qwen3.5-flash"}           # 수정
+    ]
 
     problems = load_questions()
     print(f"📋 문제 {len(problems)}개 × {REPEATS}회 × {len(targets)}개 모델 "
@@ -236,9 +255,10 @@ def run_experiment():
                         "repeat_index":   repeat_idx,
                         "is_correct":     1 if result["full_content"].strip().upper()[:1] == prob["answer"] else 0
                     })
+                    saved_to = append_to_csv(result, period=period)  # period 전달
 
-                    append_to_csv(result)
-                    print(f"   저장 완료: {target['model']} | repeat {repeat_idx}")
+
+                    print(f"   저장 완료: {target['model']} | repeat {repeat_idx} → {saved_to}")
 
                 time.sleep(2)
 
@@ -248,16 +268,16 @@ def run_experiment():
 # ──────────────────────────────────────────────
 # 5. 스케줄러
 # ──────────────────────────────────────────────
-def job():
-    print(f"[{datetime.now()}] 벤치마크 테스트 시작...")
-    run_experiment()
+def job(period: str = "unknown"):
+    print(f"[{datetime.now()}] 벤치마크 테스트 시작... ({period})")
+    run_experiment(period=period)
 
 
-# 피크 시간대 (KST 오전 3시, EST 13:00, PST 10:00)
-schedule.every().day.at("02:00").do(job)
+# 피크 시간대 (EST 10:00 == KST 00:00)
+schedule.every().day.at("00:00").do(job, period="peak")
 
 # 논 피크 시간대 (PST 02:00, EST 05:00, KST 12:00)
-schedule.every().day.at("19:00").do(job)
+schedule.every().day.at("19:00").do(job, period="nonpeak")
 
 print("스케줄러 시작... 대기 중.")
 while True:

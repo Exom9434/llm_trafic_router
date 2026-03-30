@@ -2,3 +2,4 @@
 gen-lang-client.json
 logs/
 __pycache__/
+*.csv
