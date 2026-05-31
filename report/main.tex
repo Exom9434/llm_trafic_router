@@ -1,0 +1,317 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{natbib}
+\usepackage{authblk}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue,
+}
+
+\title{\textbf{Peak vs.\ Non-Peak Performance of Commercial LLM APIs:\\
+A 28-Day Measurement Study}}
+
+\author[1]{Jaekyung Noh}
+\affil[1]{Independent Researcher \\ \texttt{silverbreak1@gmail.com}}
+
+\date{May 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Commercial large language model (LLM) APIs are shared infrastructure, yet little is known
+about how server load during peak business hours affects latency, throughput, and answer
+quality in practice.
+We benchmark four providers---OpenAI (\texttt{gpt-4o-mini}), Anthropic
+(\texttt{claude-haiku-4-5}), Google (\texttt{gemini-flash-lite}), and Alibaba Qwen
+(\texttt{qwen3.5-flash})---twice daily for 28 days using 30 MMLU questions, measuring
+time-to-first-token (TTFT), tokens-per-second (TPS), and answer accuracy.
+Peak sessions run at 10:00\,ET (within the 8\,AM--2\,PM US East Coast peak band);
+non-peak sessions run at 22:00\,ET.
+We find that TTFT increases significantly during peak hours for US-hosted providers
+(+4\% to +37\%), while Qwen---served from an Alibaba Cloud US endpoint---is
+counter-intuitively \emph{faster} during US peak hours ($-7\%$ TTFT, $+9\%$ TPS),
+consistent with the hypothesis that US peak corresponds to Asia off-peak.
+Answer accuracy shows no statistically significant change for any provider across
+conditions, suggesting that output quality is decoupled from infrastructure load at
+the scale tested.
+\end{abstract}
+
+\section{Introduction}
+
+Large language model APIs have become commodity infrastructure for production applications,
+yet their service-level properties under varying load conditions remain largely undocumented
+from the consumer's perspective.
+Unlike traditional web services whose latency characteristics are well-studied, LLM inference
+involves substantial per-request compute that amplifies the effect of concurrent demand.
+
+Traffic on commercial AI APIs follows predictable diurnal patterns driven by North American
+business hours.
+If providers do not over-provision sufficiently, practitioners who call APIs during peak hours
+may receive degraded latency---increasing costs for time-sensitive applications such as
+real-time agents or interactive chat.
+Whether throughput degradation also affects output \emph{quality} (answer accuracy) is an
+open question with direct implications for reliability-critical deployments.
+
+This paper reports the results of a 28-day empirical study comparing peak-hour and
+off-peak-hour performance across four major LLM API providers on a standardized MMLU
+benchmark suite.
+Our primary contributions are:
+\begin{enumerate}
+    \item A reproducible measurement framework for longitudinal LLM API benchmarking.
+    \item Provider-specific quantification of peak-vs-nonpeak latency and throughput effects.
+    \item Evidence that MMLU accuracy is robust to infrastructure load conditions.
+    \item An anomalous finding for a non-US-headquartered provider suggesting
+          inter-regional load balancing.
+\end{enumerate}
+
+\section{Methodology}
+
+\subsection{Providers and Models}
+
+We evaluated four providers and their smallest fast-inference models available at the time
+of the study (Table~\ref{tab:models}).
+All models were prompted with a fixed system prompt instructing single-letter responses
+(\texttt{A}--\texttt{D}), with \texttt{temperature=0} for reproducibility.
+Streaming inference was used for all calls to measure TTFT directly.
+
+\begin{table}[h]
+\centering
+\caption{Models under evaluation.}
+\label{tab:models}
+\begin{tabular}{lll}
+\toprule
+\textbf{Provider} & \textbf{Model} & \textbf{Endpoint region} \\
+\midrule
+OpenAI    & \texttt{gpt-4o-mini-2024-07-18}        & US East \\
+Anthropic & \texttt{claude-haiku-4-5-20251001}     & US East \\
+Google    & \texttt{gemini-3.1-flash-lite-preview}  & US (GCP) \\
+Qwen      & \texttt{qwen3.5-flash}                  & US (Alibaba Cloud) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Question Set}
+
+We selected 30 questions from the Massive Multitask Language Understanding (MMLU) benchmark
+\citep{hendrycks2021measuring}, sampling across subjects and difficulty levels.
+Each question was repeated three times per session to reduce variance, yielding 90 trials
+per provider per session (30 questions $\times$ 3 repeats).
+Accuracy was scored by extracting the first valid option letter from the model response
+using a cascade of regular expressions targeting XML-tagged answers, explicit
+``Answer:'' labels, and trailing isolated letters.
+
+\subsection{Experimental Schedule}
+
+Experiments ran from 2026-03-30 to 2026-04-26 (28 days).
+Two sessions were scheduled daily in the America/New\_York timezone:
+\begin{itemize}
+    \item \textbf{Peak}: 10:00\,ET --- within the 8\,AM--2\,PM Eastern peak band.
+    \item \textbf{Non-peak}: 22:00\,ET --- US East Coast late night.
+\end{itemize}
+Sessions were managed by a Python scheduler (APScheduler) running as a launchd daemon on
+a Mac Mini with a residential internet connection.
+Progress was checkpointed per task to support resumption after interruptions.
+
+\subsection{Metrics}
+
+\begin{itemize}
+    \item \textbf{TTFT} (time-to-first-token, seconds): wall-clock time from request
+          dispatch to receipt of the first streamed token.
+    \item \textbf{TPS} (tokens per second): output token count divided by generation time
+          after the first token.
+    \item \textbf{Accuracy}: proportion of trials where the parsed answer matches the
+          correct MMLU key.
+\end{itemize}
+
+\subsection{Statistical Analysis}
+
+All pairwise comparisons use the Mann--Whitney U test (two-sided), which makes no
+distributional assumptions and is robust to the heavy-tailed latency distributions observed.
+Effect sizes are reported as median differences and percent change relative to the non-peak
+median (mean for accuracy). Significance threshold: $\alpha = 0.05$.
+
+\section{Results}
+
+\subsection{Data Completeness}
+
+Of 56 scheduled slots (28 days $\times$ 2 periods), 54 were executed; 3 non-peak slots
+were missed due to daemon downtime.
+Most executed slots were partial: API errors (primarily Google returning HTTP~429/503)
+caused premature termination in 45 of 54 slots.
+A \emph{complete} slot is defined as exactly 360 rows
+(30 questions $\times$ 3 repeats $\times$ 4 providers).
+Only 7 slots were complete (3 non-peak, 4 peak).
+All primary results below use these 7 complete slots (1,890 rows total);
+see Section~\ref{sec:limitations} for discussion of this constraint.
+
+\subsection{Latency: Time-to-First-Token}
+
+\begin{table}[h]
+\centering
+\caption{TTFT comparison across conditions (complete slots only; $n_\text{peak}=360$,
+$n_\text{nonpeak}=270$ per provider; medians reported).
+Significance: $^{***}p<0.001$, $^{*}p<0.05$, \textit{ns}=not significant.}
+\label{tab:ttft}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Provider} & \textbf{Non-peak (s)} & \textbf{Peak (s)}
+  & \textbf{$\Delta$ (s)} & \textbf{$\Delta$ (\%)} & \textbf{Sig.} \\
+\midrule
+OpenAI    & 0.873 & 0.910 & $+0.037$ & $+4.3\%$  & $^{*}$   \\
+Anthropic & 0.835 & 0.971 & $+0.136$ & $+16.3\%$ & $^{***}$ \\
+Google    & 1.721 & 2.355 & $+0.634$ & $+36.8\%$ & $^{***}$ \\
+Qwen      & 3.698 & 3.445 & $-0.253$ & $-6.8\%$  & $^{***}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three of the four providers exhibit significantly higher TTFT during peak hours
+(Table~\ref{tab:ttft}).
+Google shows the largest absolute and relative increase (+37\%), while OpenAI shows the
+smallest (+4\%).
+Qwen is the sole outlier: TTFT is \emph{lower} during peak hours, a pattern we discuss
+in Section~\ref{sec:discussion}.
+
+\subsection{Throughput: Tokens per Second}
+
+\begin{table}[h]
+\centering
+\caption{TPS comparison (complete slots only; medians).}
+\label{tab:tps}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Provider} & \textbf{Non-peak} & \textbf{Peak}
+  & \textbf{$\Delta$} & \textbf{$\Delta$ (\%)} & \textbf{Sig.} \\
+\midrule
+OpenAI    & 54.9  & 53.6  & $-1.4$  & $-2.5\%$ & \textit{ns} \\
+Anthropic & 139.5 & 139.1 & $-0.5$  & $-0.3\%$ & \textit{ns} \\
+Google    & 221.6 & 226.9 & $+5.3$  & $+2.4\%$ & \textit{ns} \\
+Qwen      & 171.3 & 187.3 & $+15.9$ & $+9.3\%$ & $^{***}$    \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+TPS differences are not statistically significant for the three US-hosted providers
+(Table~\ref{tab:tps}).
+Qwen again shows the opposite pattern: generation throughput is significantly higher during
+US peak hours.
+
+\subsection{Answer Accuracy}
+
+\begin{table}[h]
+\centering
+\caption{MMLU accuracy (mean correct, complete slots only).}
+\label{tab:accuracy}
+\begin{tabular}{lrrrl}
+\toprule
+\textbf{Provider} & \textbf{Non-peak} & \textbf{Peak}
+  & \textbf{$\Delta$} & \textbf{Sig.} \\
+\midrule
+OpenAI    & 0.493 & 0.475 & $-0.018$ & \textit{ns} \\
+Anthropic & 0.833 & 0.817 & $-0.017$ & \textit{ns} \\
+Google    & 0.867 & 0.864 & $-0.003$ & \textit{ns} \\
+Qwen      & 0.822 & 0.808 & $-0.014$ & \textit{ns} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No provider shows a statistically significant change in accuracy between peak and non-peak
+conditions (Table~\ref{tab:accuracy}, all $p > 0.5$).
+The sub-50\% accuracy of OpenAI's \texttt{gpt-4o-mini} reflects this model's sensitivity to
+strict single-letter output formatting; format-failure rates range from 1.5\% to 2.8\%.
+
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{US-hosted providers: TTFT scales with load.}
+OpenAI, Anthropic, and Google all exhibit elevated TTFT during peak hours, consistent with
+increased queuing or scheduling overhead under higher concurrent demand.
+The effect ranges from modest for OpenAI ($\approx$4\%) to substantial for Google
+($\approx$37\%), suggesting different capacity margins across providers.
+Critically, this latency increase does not propagate to generation speed or accuracy,
+implying that once the model begins generating, execution is largely isolated from
+request-level congestion.
+
+\paragraph{Qwen anomaly: cross-regional load balancing.}
+Qwen's US endpoint (\texttt{dashscope-us.aliyuncs.com}) runs on Alibaba Cloud
+infrastructure.
+US business peak hours (10:00\,ET) correspond to approximately 23:00--01:00 the following
+day in China Standard Time---well outside Chinese business hours.
+The observed lower TTFT and higher TPS during US peak hours is consistent with the hypothesis
+that Alibaba's global scheduler shifts load to US-region GPUs when Asian demand is low,
+effectively benefiting US users during their own peak.
+This finding suggests that infrastructure geography and inter-regional load balancing may
+produce effects opposite to naive expectations for non-US-headquartered providers.
+
+\paragraph{Accuracy robustness.}
+The absence of accuracy degradation during peak hours is practically important.
+Applications relying on LLM APIs for classification or reasoning can expect consistent
+output quality regardless of the time of day.
+Operators optimizing purely for quality need not schedule around traffic patterns.
+Those optimizing for latency-sensitive workloads (real-time agents, interactive chat) should
+budget for TTFT increases of 4--37\% during US peak hours.
+
+\section{Limitations}
+\label{sec:limitations}
+
+\paragraph{Limited complete-slot coverage.}
+Of 54 executed slots, only 7 met the completeness threshold of 360 rows.
+Partial slots were caused predominantly by Google API rate-limiting (HTTP 429/503), which
+disproportionately affected non-peak slots and may introduce selection bias.
+Analyses are restricted to complete slots to minimize this bias, but the sample covers only
+a subset of the 28-day window and reduces statistical power.
+
+\paragraph{Single time point per condition.}
+Each daily session is a single snapshot (10:00 or 22:00\,ET).
+Intra-period variability (e.g., 9:00 vs.\ 13:00 during peak) is not captured.
+
+\paragraph{Residential network variability.}
+All measurements were made from a Mac Mini on a residential internet connection.
+Network jitter contributes to TTFT variance and cannot be fully separated from server-side
+latency effects.
+
+\paragraph{Small question set and statistical power.}
+30 MMLU questions are insufficient to detect small accuracy effects ($<$2\%) or
+subject-level differences. A larger question set would improve sensitivity.
+
+\paragraph{Model versioning.}
+Providers may silently update model weights or infrastructure during the study period.
+Observed trends reflect the combined effect of load patterns and any within-study
+infrastructure changes, which we did not control for.
+
+\section{Conclusion}
+
+We conducted a 28-day longitudinal benchmark of four commercial LLM APIs at US business-hour
+peak and off-peak times.
+US-hosted providers (OpenAI, Anthropic, Google) show significantly elevated TTFT during peak
+hours (4--37\%), with no corresponding degradation in generation throughput or answer
+accuracy.
+Qwen, served from a US-region Alibaba Cloud endpoint, shows the opposite pattern---faster
+TTFT and higher TPS during US peak---consistent with cross-regional load balancing.
+
+These findings suggest that practitioners should expect latency increases for latency-critical
+applications during US business hours but can rely on consistent output quality regardless of
+time of day.
+Future work should extend the study period, increase question coverage, and instrument
+server-side metrics to corroborate the load-balancing hypothesis.
+
+\section*{Data and Code Availability}
+
+The benchmark framework, collected CSVs, and analysis scripts are available at
+\url{https://github.com/silverbreak1/llm_trafic_router}.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
