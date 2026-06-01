@@ -36,7 +36,7 @@ We benchmark four providers---OpenAI (\texttt{gpt-4o-mini}), Anthropic
 (\texttt{claude-haiku-4-5}), Google (\texttt{gemini-flash-lite}), and Alibaba Qwen
 (\texttt{qwen3.5-flash})---twice daily for 28 days using 30 MMLU questions, measuring
 time-to-first-token (TTFT), tokens-per-second (TPS), and answer accuracy.
-Peak sessions run at 10:00\,ET (within the 8\,AM--2\,PM US East Coast peak band);
+Peak sessions run at 10:00\,ET (within the 8\,AM--2\,PM ET peak band \citep{anthropic2026promotion});
 non-peak sessions run at 22:00\,ET.
 We find that TTFT increases significantly during peak hours for US-hosted providers
 (+4\% to +37\%), while Qwen---served from an Alibaba Cloud US endpoint---is
@@ -116,7 +116,7 @@ using a cascade of regular expressions targeting XML-tagged answers, explicit
 Experiments ran from 2026-03-30 to 2026-04-26 (28 days).
 Two sessions were scheduled daily in the America/New\_York timezone:
 \begin{itemize}
-    \item \textbf{Peak}: 10:00\,ET --- within the 8\,AM--2\,PM Eastern peak band.
+    \item \textbf{Peak}: 10:00\,ET --- within the 8\,AM--2\,PM ET peak band \citep{anthropic2026promotion}.
     \item \textbf{Non-peak}: 22:00\,ET --- US East Coast late night.
 \end{itemize}
 Sessions were managed by a Python scheduler (APScheduler) running as a launchd daemon on
@@ -265,10 +265,12 @@ budget for TTFT increases of 4--37\% during US peak hours.
 \section{Limitations}
 \label{sec:limitations}
 
-\paragraph{Limited complete-slot coverage.}
+\paragraph{Limited complete-slot coverage and Google data gaps.}
 Of 54 executed slots, only 7 met the completeness threshold of 360 rows.
-Partial slots were caused predominantly by Google API rate-limiting (HTTP 429/503), which
-disproportionately affected non-peak slots and may introduce selection bias.
+The primary cause was Google Gemini API rate-limiting (HTTP~429/503 errors), which
+terminated experiments mid-session, resulting in entire Google response rows being absent
+rather than malformed.
+This disproportionately affected non-peak slots and may introduce selection bias.
 Analyses are restricted to complete slots to minimize this bias, but the sample covers only
 a subset of the 28-day window and reduces statistical power.
 
@@ -284,6 +286,13 @@ latency effects.
 \paragraph{Small question set and statistical power.}
 30 MMLU questions are insufficient to detect small accuracy effects ($<$2\%) or
 subject-level differences. A larger question set would improve sensitivity.
+
+\paragraph{Non-comparable generation speed across providers.}
+Qwen (\texttt{qwen3.5-flash}) returns extended chain-of-thought reasoning by default,
+producing responses substantially longer than those of other providers for the same prompt.
+As a result, TPS figures for Qwen reflect a different output regime and direct
+cross-provider speed comparisons are not meaningful.
+Within-provider peak vs.\ non-peak TPS comparisons remain valid.
 
 \paragraph{Model versioning.}
 Providers may silently update model weights or infrastructure during the study period.
