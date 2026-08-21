@@ -18,43 +18,48 @@
 \providecommand\HyField@AuxAddToCoFields[2]{}
 \citation{anthropic2026promotion}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\citation{wang2024mmlupro}
 \citation{hendrycks2021measuring}
-\citation{anthropic2026promotion}
 \@writefile{toc}{\contentsline {section}{\numberline {2}Methodology}{2}{section.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Providers and Models}{2}{subsection.2.1}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Models under evaluation.}}{2}{table.1}\protected@file@percent }
 \newlabel{tab:models}{{1}{2}{Models under evaluation}{table.1}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Question Set}{2}{subsection.2.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Experimental Schedule}{2}{subsection.2.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Metrics}{2}{subsection.2.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Statistical Analysis}{3}{subsection.2.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Results}{3}{section.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Data Completeness}{3}{subsection.3.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Latency: Time-to-First-Token}{3}{subsection.3.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces TTFT comparison across conditions (complete slots only; $n_\text  {peak}=360$, $n_\text  {nonpeak}=270$ per provider; medians reported). Significance: $^{***}p<0.001$, $^{*}p<0.05$, \textit  {ns}=not significant.}}{3}{table.2}\protected@file@percent }
-\newlabel{tab:ttft}{{2}{3}{TTFT comparison across conditions (complete slots only; $n_\text {peak}=360$, $n_\text {nonpeak}=270$ per provider; medians reported). Significance: $^{***}p<0.001$, $^{*}p<0.05$, \textit {ns}=not significant}{table.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Throughput: Tokens per Second}{3}{subsection.3.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces TPS comparison (complete slots only; medians).}}{3}{table.3}\protected@file@percent }
-\newlabel{tab:tps}{{3}{3}{TPS comparison (complete slots only; medians)}{table.3}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces MMLU accuracy (mean correct, complete slots only).}}{4}{table.4}\protected@file@percent }
-\newlabel{tab:accuracy}{{4}{4}{MMLU accuracy (mean correct, complete slots only)}{table.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Answer Accuracy}{4}{subsection.3.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Discussion}{4}{section.4}\protected@file@percent }
-\newlabel{sec:discussion}{{4}{4}{Discussion}{section.4}{}}
-\@writefile{toc}{\contentsline {paragraph}{US-hosted providers: TTFT scales with load.}{4}{section*.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Qwen anomaly: cross-regional load balancing.}{4}{section*.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Accuracy robustness.}{4}{section*.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Limitations}{4}{section.5}\protected@file@percent }
-\newlabel{sec:limitations}{{5}{4}{Limitations}{section.5}{}}
-\@writefile{toc}{\contentsline {paragraph}{Limited complete-slot coverage and Google data gaps.}{4}{section*.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Single time point per condition.}{4}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}System Prompt}{2}{subsection.2.3}\protected@file@percent }
+\citation{anthropic2026promotion}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Experimental Schedule and Session Flow}{3}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Resumption Logic}{3}{subsection.2.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.6}Metrics}{3}{subsection.2.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.7}Statistical Analysis}{3}{subsection.2.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Results}{4}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Data Completeness}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Latency: Time-to-First-Token}{4}{subsection.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces TTFT: peak vs.\ non-peak at the slot level (complete slots only; $n_\text  {peak}=6$ slots, $n_\text  {nonpeak}=3$ slots; slot medians reported). $p_\text  {exact}$: two-sided exact Mann--Whitney on slot medians. $p_\text  {perm}$: exact permutation test on the mean slot difference.}}{4}{table.2}\protected@file@percent }
+\newlabel{tab:ttft}{{2}{4}{TTFT: peak vs.\ non-peak at the slot level (complete slots only; $n_\text {peak}=6$ slots, $n_\text {nonpeak}=3$ slots; slot medians reported). $p_\text {exact}$: two-sided exact Mann--Whitney on slot medians. $p_\text {perm}$: exact permutation test on the mean slot difference}{table.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Throughput: Tokens per Second}{4}{subsection.3.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces TPS: peak vs.\ non-peak at the slot level (complete slots only; slot medians; $n_\text  {peak}=6$, $n_\text  {nonpeak}=3$ slots). Columns as in Table\nobreakspace  {}\ref  {tab:ttft}.}}{4}{table.3}\protected@file@percent }
+\newlabel{tab:tps}{{3}{4}{TPS: peak vs.\ non-peak at the slot level (complete slots only; slot medians; $n_\text {peak}=6$, $n_\text {nonpeak}=3$ slots). Columns as in Table~\ref {tab:ttft}}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces MMLU-Pro accuracy: peak vs.\ non-peak at the slot level (mean correct per slot, complete slots only; $n_\text  {peak}=6$, $n_\text  {nonpeak}=3$ slots).}}{5}{table.4}\protected@file@percent }
+\newlabel{tab:accuracy}{{4}{5}{MMLU-Pro accuracy: peak vs.\ non-peak at the slot level (mean correct per slot, complete slots only; $n_\text {peak}=6$, $n_\text {nonpeak}=3$ slots)}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Answer Accuracy}{5}{subsection.3.4}\protected@file@percent }
+\newlabel{sec:accuracy}{{3.4}{5}{Answer Accuracy}{subsection.3.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Discussion}{5}{section.4}\protected@file@percent }
+\newlabel{sec:discussion}{{4}{5}{Discussion}{section.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{US-hosted providers: TTFT trends upward with load.}{5}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Qwen anomaly: possible effect of regional user distribution.}{5}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Accuracy robustness.}{5}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Limitations}{6}{section.5}\protected@file@percent }
+\newlabel{sec:limitations}{{5}{6}{Limitations}{section.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{Limited complete-slot coverage and Google data gaps.}{6}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Low statistical power and the slot as the unit of analysis.}{6}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Residential network variability.}{6}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Small question set and statistical power.}{6}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Non-comparable generation speed across providers.}{6}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Model versioning.}{6}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{6}{section.6}\protected@file@percent }
 \bibstyle{plainnat}
 \bibdata{references}
 \bibcite{anthropic2026promotion}{{1}{2026}{{Anthropic}}{{}}}
 \bibcite{hendrycks2021measuring}{{2}{2021}{{Hendrycks et~al.}}{{Hendrycks, Burns, Basart, Zou, Mazeika, Song, and Steinhardt}}}
-\@writefile{toc}{\contentsline {paragraph}{Residential network variability.}{5}{section*.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Small question set and statistical power.}{5}{section*.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Non-comparable generation speed across providers.}{5}{section*.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Model versioning.}{5}{section*.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{5}{section.6}\protected@file@percent }
-\gdef \@abspage@last{5}
+\bibcite{wang2024mmlupro}{{3}{2024}{{Wang et~al.}}{{Wang, Ma, Zhang, Ni, Chandra, Guo, Ren, Arulraj, He, Jiang, et~al.}}}
+\gdef \@abspage@last{7}
