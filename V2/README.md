@@ -21,7 +21,10 @@
 
 - **`07_reanalysis_slot_level.py`** — 1차 논문의 통계 오류(pseudoreplication)를 슬롯 단위로 바로잡은 재분석. 결과: `outputs/reanalysis_slot_level_report.md`.
 - **`08_accuracy_parsing_check.py`** — gpt-4o-mini의 49% 정확도가 파싱 오류가 아니라 MMLU-Pro에서의 실제 성능임을 확인. 결과: `outputs/accuracy_parsing_check.md`.
-- **`09_power_cost_analysis.py`** — 새 실험의 검정력·비용 산정 계산기. 결과: `outputs/power_cost_analysis.md`.
+- **`09_power_cost_analysis.py`** — 1차 검정력·비용 계산기. logprob 주력과 두 표본 비교를
+  전제해 폐기했다. 기록용으로만 남긴다.
+- **`10_power_cost_v2.py`** — 검정력·비용 재산정(2026-08-21). 짝비교 모형으로 다시 계산하고
+  단가는 `runner/config.py`에서 읽는다. 결과: `outputs/power_cost_v2.md`.
 
 > **주의:** `07`·`08` 스크립트는 원래 V1 분석 파이프라인(`../analysis/common.py`와 `../analysis/outputs/cleaned_results.csv`)에 의존한다. 이곳의 사본은 기록용이며, 다시 돌리려면 원본 위치(`analysis/`)에서 실행하는 편이 안전하다. `09`는 파라미터만으로 독립 실행된다.
 
