@@ -2,7 +2,7 @@
 
 **Observing LLM API Latency During Peak and Off-Peak Hours: A 28-Day Log**
 
-A pilot study benchmarking four commercial LLM APIs (OpenAI, Anthropic, Google, Alibaba Qwen) across peak and off-peak US business hours over 28 days, measuring TTFT, TPS, and MMLU accuracy.
+A pilot study benchmarking four commercial LLM APIs (OpenAI, Anthropic, Google, Alibaba Qwen) across peak and off-peak US business hours over 28 days, measuring TTFT, TPS, and MMLU-Pro accuracy.
 
 📄 [Read the report (PDF)](report/main.pdf)
 
