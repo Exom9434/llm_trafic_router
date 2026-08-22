@@ -94,6 +94,11 @@ class ModelSpec:
         return os.getenv(self.api_key_env)
 
 
+# CLOVA Studio만 KRW로 과금한다. 다른 프로바이더와 나란히 놓으려면 환산이 필요하다.
+# 환율은 고정값으로 박아 둔다 — 실행 중에 환율을 조회하면 같은 로그의 비용이
+# 시점마다 달라져 재현이 안 된다. 갱신하려면 이 상수만 고치면 된다.
+KRW_PER_USD = 1387.0          # 2026-08-22 중간환율
+
 # 단가는 2026-08-21 조사 기준이다. 비용 추정용이며 청구 근거가 아니다.
 LINEUP: list[ModelSpec] = [
     ModelSpec(
@@ -211,14 +216,18 @@ LINEUP: list[ModelSpec] = [
         api_key_env="CLOVASTUDIO_API_KEY",
         base_url="https://clovastudio.stream.ntruss.com",
         supports_logprobs="no",
-        price_in=0.0, price_out=0.0,        # KRW 단가 미확인. 콘솔에서 채울 것.
+        # 1,000토큰당 입력 0.25원 / 출력 1원 (2026-08-22 콘솔 확인).
+        # 1M 토큰 환산: 입력 250원, 출력 1,000원.
+        price_in=250.0 / KRW_PER_USD,
+        price_out=1000.0 / KRW_PER_USD,
         max_concurrency=2,
         pinned=True,
         notes=(
             "여전히 현행 최신 경량 모델. DASH-003은 없다. "
             "temperature 0을 허용한다(0.00~1.00) — 3월에 걱정하던 문제는 없었다. "
-            "요금은 1,000토큰 단위 KRW 과금인데 페이지가 JS 렌더링이라 값 미확인. "
-            "비용 추정에서 빠지므로 총액이 과소평가된다."
+            "요금은 1,000토큰당 입력 0.25원·출력 1원이며 부가세 별도다. "
+            "위 단가는 부가세 전이므로 실제 청구액은 약 10% 더 나온다. "
+            "다른 프로바이더와 비교 가능하게 두려고 부가세를 빼고 적었다."
         ),
     ),
 ]

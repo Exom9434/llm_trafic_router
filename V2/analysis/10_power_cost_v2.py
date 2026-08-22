@@ -266,8 +266,8 @@ def main() -> None:
     add("## 3. 비용")
     add("")
     add(f"단가는 `V2/runner/config.py`에서 읽는다(2026-08-21 기준). 입력은 문항당 "
-        f"{INPUT_TOKENS}토큰으로 가정했다. HyperCLOVA는 단가 미확인이라 0으로 잡혀 "
-        f"있어 합계가 과소평가된다.")
+        f"{INPUT_TOKENS}토큰으로 가정했다. CLOVA는 KRW 과금이라 `KRW_PER_USD`로 "
+        f"환산한 값이며 부가세는 빠져 있다 — 다른 프로바이더와 나란히 놓기 위해서다.")
     add("")
 
     lineup = config.LINEUP
