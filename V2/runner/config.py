@@ -29,6 +29,38 @@ REPO_ROOT = ROOT.parent.parent           # llm_trafic_router/
 DATA_DIR = ROOT / "data"
 OUTPUT_DIR = ROOT / "outputs"
 CAPABILITIES_FILE = ROOT / "capabilities.json"
+ENV_FILE = REPO_ROOT / ".env"
+
+
+def _load_env() -> None:
+    """저장소 루트의 .env를 읽어 환경변수로 올린다.
+
+    러너가 V2/runner/에 있고 .env는 저장소 루트에 있어서, 경로를 명시하지
+    않으면 못 찾는다. 이미 셸에 설정된 값은 덮어쓰지 않는다.
+    python-dotenv가 없으면 직접 파싱한다 — 키 몇 개 읽자고 실행이 막히면
+    곤란하기 때문이다.
+    """
+    if not ENV_FILE.exists():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ENV_FILE, override=False)
+        return
+    except ImportError:
+        pass
+
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_env()
 
 # ─────────────────────────────────────────────────────────────
 # 모델 라인업
