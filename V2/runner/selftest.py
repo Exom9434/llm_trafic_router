@@ -18,6 +18,7 @@ import uuid
 from pathlib import Path
 
 import prompts
+from budget import DayLedger, SpendGuard, measure_token_profiles, project
 from calllog import JsonlLogger, load_done_keys, read_records
 from config import ModelSpec
 from core import CallSpec, run_batch
@@ -33,11 +34,14 @@ RNG = random.Random(20260722)
 
 MOCK_MODELS = [
     ModelSpec(key="mock_strong", provider="mock", model="mock-strong-v1",
-              adapter="openai_compat", api_key_env="MOCK", supports_logprobs="yes"),
+              adapter="openai_compat", api_key_env="MOCK", supports_logprobs="yes",
+              price_in=1.00, price_out=5.00),
     ModelSpec(key="mock_mid", provider="mock", model="mock-mid-v1",
-              adapter="openai_compat", api_key_env="MOCK", supports_logprobs="yes"),
+              adapter="openai_compat", api_key_env="MOCK", supports_logprobs="yes",
+              price_in=0.30, price_out=1.20),
     ModelSpec(key="mock_weak", provider="mock", model="mock-weak-v1",
-              adapter="openai_compat", api_key_env="MOCK", supports_logprobs="no"),
+              adapter="openai_compat", api_key_env="MOCK", supports_logprobs="no",
+              price_in=0.05, price_out=0.20),
 ]
 
 SKILL = {"mock_strong": 0.25, "mock_mid": 0.0, "mock_weak": -0.25}
@@ -226,6 +230,58 @@ if __name__ == "__main__":
     rec_with_reasoning = [r for r in records if r["model_key"] == "mock_strong"]
     check("로그에 reasoning_tokens 기록됨",
           all(r.get("reasoning_tokens") == 12 for r in rec_with_reasoning))
+
+    # 5. 지출 가드 ────────────────────────────────────────
+    print("\n지출 가드")
+    profiles = measure_token_profiles(log_path)
+    check("실측 토큰 프로파일 3모델", len(profiles) == 3, str(sorted(profiles)))
+    check("입력 토큰 실측값 반영",
+          all(abs(p.mean_input - 320) < 1e-6 for p in profiles.values()))
+    check("추론 토큰 실측값 반영",
+          profiles["mock_strong"].mean_reasoning == 12.0
+          and profiles["mock_mid"].mean_reasoning == 0.0)
+
+    design = {"bank": 300, "items_per_slot": 100, "slots_per_day": 8, "days": 14, "k": 5}
+    plan = project(MOCK_MODELS, profiles, lambda m: design)
+    check("모델 3개 모두 투영됨", len(plan["models"]) == 3)
+    e = plan["models"]["mock_strong"]
+    check("상한 = 투영치 × 배수",
+          abs(e["spend_cap"] - round(e["projected_total"] * 3.0, 2)) < 0.02,
+          f"투영 ${e['projected_total']}, 상한 ${e['spend_cap']}")
+    check("하루 예약 < 총 투영", e["day_reserve"] < e["projected_total"])
+
+    guard = SpendGuard(plan)
+    ok, _ = guard.can_start_day("mock_strong")
+    check("예산 충분하면 하루 시작 허용", ok)
+
+    # 상한 직전까지 쓴 상황을 만든다. 하루치 예약이 안 되면 시작을 막아야 한다.
+    guard.spent["mock_strong"] = e["spend_cap"] - e["day_reserve"] * 0.5
+    ok, reason = guard.can_start_day("mock_strong")
+    check("하루치 예약 불가하면 시작 거부", not ok, reason)
+    check("거부는 날 경계에서만 — 중간 점검은 아직 통과",
+          guard.check_mid_day("mock_mid")[0])
+
+    ok_other, _ = guard.can_start_day("mock_mid")
+    check("모델별 독립 정지 (다른 모델은 계속)", ok_other)
+    check("정지 사유가 기록됨", "mock_strong" in guard.stopped)
+
+    # 재개: 로그에서 누적 비용을 복원한다
+    guard2 = SpendGuard(plan)
+    guard2.load_spent(log_path, MOCK_MODELS)
+    expected = sum(1 for r in records if r["model_key"] == "mock_strong") * (
+        320 / 1e6 * 1.00 + 1 / 1e6 * 5.00)
+    check("재개 시 기존 지출 복원",
+          abs(guard2.spent["mock_strong"] - expected) < 1e-9,
+          f"{guard2.spent['mock_strong']:.6f} vs {expected:.6f}")
+
+    # 날짜 완주 기록
+    ledger = DayLedger(tmp / "day_status.jsonl")
+    ledger.write("mock_strong", "2026-09-01", 8, 8, "complete")
+    ledger.write("mock_strong", "2026-09-02", 8, 3, "aborted", "상한 초과")
+    ledger.write("mock_mid", "2026-09-01", 8, 8, "complete")
+    done = ledger.complete_days()
+    check("완주한 날만 분석 대상", len(done) == 2 and all(d["status"] == "complete" for d in done))
+    check("모델별 필터", len(ledger.complete_days("mock_strong")) == 1)
 
     print()
     if _failures:

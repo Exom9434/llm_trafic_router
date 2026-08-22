@@ -38,7 +38,12 @@ python calibrate.py --k 5
 
 # 4. 문항 은행 + 노이즈 바닥선
 python select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
+
+# 5. 실측 토큰으로 본실험 비용 투영 + 지출 상한 산출
+python budget.py
 ```
+
+키 설정 상태가 궁금하면 아무 때나 `python check_env.py`를 친다.
 
 3번은 중단해도 된다. 같은 명령을 다시 치면 이미 끝난 콜은 건너뛴다.
 
@@ -55,6 +60,8 @@ python select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
 | `calibrate.py` | 보정 패스 러너. 재개 가능, `--dry-run`으로 비용 선확인 |
 | `select_bank.py` | 40~85% 밴드 선별 + 모델별 노이즈 바닥선 |
 | `smoke_test.py` | logprob·fingerprint 실지원 확인 → `capabilities.json` |
+| `check_env.py` | API 키 설정 상태 점검 (키 값은 찍지 않는다) |
+| `budget.py` | 실측 토큰 기반 비용 투영, 하루 단위 지출 가드, 날짜 완주 기록 |
 | `selftest.py` | API 없이 도는 자체 점검 |
 
 ## 설계상 짚어 둘 점
@@ -73,6 +80,12 @@ python select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
 
 **재개 키는 성공한 콜만 센다.** 오류로 끝난 레코드는 로그에 남지만 done 집합에
 들어가지 않으므로 다시 실행하면 재시도된다.
+
+**지출 가드는 하루 단위로만 끊는다.** 하루 도중에 멈추면 그날은 앞쪽 슬롯만
+남아 절단이 시간대와 상관된다. 편향이 되는 것이다. 그래서 하루를 시작하기
+전에 그날 치 예산을 예약하고, 모자라면 그날을 아예 시작하지 않는다. 완주
+여부는 `outputs/day_status.jsonl`에 남고 분석은 완주한 날만 쓴다(설계서 8.1절).
+정지는 모델 단위라 한 모델이 멈춰도 나머지는 계속 돈다.
 
 ## .env에 추가로 필요한 키
 
