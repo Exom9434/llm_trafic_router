@@ -75,6 +75,7 @@ class ModelSpec:
     api_key_env: str
     base_url: str | None = None
     tier: str = "budget"         # "budget" | "flagship"
+    region: str = "us"           # "us" | "cn" | "kr" — 부하 주기가 다른 단위
     supports_logprobs: str = "unknown"   # "yes" | "no" | "unknown"
     price_in: float = 0.0        # USD / 1M input tokens
     price_out: float = 0.0       # USD / 1M output tokens
@@ -142,6 +143,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="deepseek_v4_flash",
+        region="cn",
         provider="deepseek",
         model="deepseek-v4-flash",
         adapter="openai_compat",
@@ -160,6 +162,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="qwen_flash",
+        region="cn",
         provider="qwen",
         model="qwen3.7-flash-2026-07-15",
         adapter="openai_compat",
@@ -178,6 +181,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="upstage_solar_pro4",
+        region="kr",
         provider="upstage",
         model="solar-pro4",
         adapter="openai_compat",
@@ -210,6 +214,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="naver_hcx_dash",
+        region="kr",
         provider="naver",
         model="HCX-DASH-002",
         adapter="hyperclova",
@@ -270,16 +275,26 @@ ANCHORS: list[ModelSpec] = [
 ALL_MODELS: list[ModelSpec] = LINEUP + ANCHORS
 
 
-def get_models(keys: list[str] | None = None, include_anchors: bool = True) -> list[ModelSpec]:
-    """키 목록으로 모델을 고른다. keys가 None이면 키가 설정된 것만 준다."""
+def get_models(keys: list[str] | None = None, include_anchors: bool = True,
+               region: str | None = None) -> list[ModelSpec]:
+    """키 목록으로 모델을 고른다. keys가 None이면 키가 설정된 것만 준다.
+
+    region을 주면 그 지역 프로바이더만 남긴다. 보정 패스를 지역별로 나눠
+    돌리기 위한 필터다.
+    """
     pool = ALL_MODELS if include_anchors else LINEUP
+    if region:
+        pool = [m for m in pool if m.region == region]
     if keys is None:
         return [m for m in pool if m.env_key()]
     by_key = {m.key: m for m in ALL_MODELS}
     missing = [k for k in keys if k not in by_key]
     if missing:
         raise KeyError(f"알 수 없는 모델 키: {missing}")
-    return [by_key[k] for k in keys]
+    chosen = [by_key[k] for k in keys]
+    if region:
+        chosen = [m for m in chosen if m.region == region]
+    return chosen
 
 
 def apply_capabilities(models: list[ModelSpec]) -> list[ModelSpec]:
@@ -318,6 +333,31 @@ OPTION_LETTERS = list("ABCDEFGHIJ")
 
 # DeepSeek이 공표한 피크 구간(UTC). 시간대=부하 가정의 외부 검증에 쓴다.
 DEEPSEEK_PEAK_WINDOWS_UTC = [(1, 4), (6, 10)]
+
+# 보정 패스를 돌려야 할 시각 (KST, 시작시 ~ 종료시).
+#
+# 9개 모델이 동시에 한가한 시각은 없다. 프로바이더의 주 사용자층이 어느
+# 표준시에 사는지에 따라 부하 주기가 갈리기 때문이다. 미국 업무시간은
+# KST 밤이고, 중국·한국 업무시간은 KST 낮이다.
+#
+# 노이즈 바닥선을 그 모델의 피크 시간에 재면 바닥선 자체가 부하를 먹은
+# 값이 된다. 본실험에서 고부하와 비교할 때 대비가 줄어 검정력을 깎는다.
+# 그래서 보정 패스는 지역별로 나눠 돌린다(설계서 6절).
+CALIBRATION_WINDOWS_KST = {
+    "us": (10, 17),    # 미국 업무시간(KST 22~06시)을 피한다
+    "cn": (23, 7),     # DeepSeek 공표 피크 KST 10~13·15~19시를 피한다
+    "kr": (23, 7),     # 한국 업무시간을 피한다
+}
+
+REGION_LABELS = {"us": "미국", "cn": "중국", "kr": "한국"}
+
+
+def in_window(hour_kst: int, window: tuple[int, int]) -> bool:
+    """자정을 넘어가는 구간(예: 23~7시)도 처리한다."""
+    start, end = window
+    if start <= end:
+        return start <= hour_kst < end
+    return hour_kst >= start or hour_kst < end
 
 
 # ─────────────────────────────────────────────────────────────

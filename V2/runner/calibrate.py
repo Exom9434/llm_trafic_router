@@ -19,17 +19,23 @@ import argparse
 import json
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+KST = timezone(timedelta(hours=9))
 
 from calllog import JsonlLogger, load_done_keys, read_records
 from config import (
+    CALIBRATION_WINDOWS_KST,
     CONSISTENCY_K,
     CONSISTENCY_TEMPERATURE,
     DIRECT_MAX_TOKENS,
     DIRECT_TEMPERATURE,
     OUTPUT_DIR,
+    REGION_LABELS,
     apply_capabilities,
     get_models,
+    in_window,
 )
 from core import CallSpec, estimate_cost, run_batch
 from itembank import load_pool
@@ -39,6 +45,38 @@ DEFAULT_LOG = OUTPUT_DIR / "calibration_calls.jsonl"
 # 직답 프로브의 평균 입력 길이 추정치(문항 하나가 대략 이 정도 토큰이다).
 # --dry-run 비용 추정에만 쓴다.
 EST_INPUT_TOKENS = 320
+
+
+def check_window(models, force: bool) -> None:
+    """지금이 각 모델의 저부하 시간인지 확인한다.
+
+    노이즈 바닥선을 그 모델의 피크 시간에 재면 바닥선 자체가 부하를 먹은
+    값이 된다. 본실험에서 대비가 줄어 검정력을 깎으므로, 창을 벗어났으면
+    막는다. 9개 모델이 동시에 한가한 시각은 없으므로 지역별로 나눠 돌린다.
+    """
+    hour = datetime.now(KST).hour
+    off = {}
+    for m in models:
+        window = CALIBRATION_WINDOWS_KST.get(m.region)
+        if window and not in_window(hour, window):
+            off.setdefault(m.region, (window, []))[1].append(m.key)
+
+    if not off:
+        return
+
+    print(f"\n현재 시각 KST {hour:02d}시 — 저부하 창을 벗어난 모델이 있다.\n")
+    for region, (window, keys) in sorted(off.items()):
+        label = REGION_LABELS.get(region, region)
+        print(f"  {label}({region}) 창 KST {window[0]:02d}~{window[1]:02d}시 — {', '.join(keys)}")
+    print("\n지역별로 나눠 돌리는 편이 낫다. 예시:")
+    for region, window in CALIBRATION_WINDOWS_KST.items():
+        label = REGION_LABELS.get(region, region)
+        print(f"  KST {window[0]:02d}~{window[1]:02d}시  python calibrate.py --region {region}"
+              f"   # {label}")
+    print("\n그래도 지금 돌리려면 --force를 붙인다. 노이즈 바닥선이 부하를 먹는다.")
+    if not force:
+        sys.exit(1)
+    print("--force 지정됨. 계속한다.\n")
 
 
 def build_call_specs(models, pool, k: int, done: set[str]) -> list[CallSpec]:
@@ -85,6 +123,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="보정 패스 실행")
     ap.add_argument("--pool", default=None, help="후보 풀 JSON (기본: data/candidate_pool.json)")
     ap.add_argument("--models", nargs="*", default=None, help="돌릴 모델 키 (기본: 키가 있는 전체)")
+    ap.add_argument("--region", choices=["us", "cn", "kr"], default=None,
+                    help="지역별로 나눠 돌린다. 보정 패스는 지역마다 저부하 시각이 다르다")
+    ap.add_argument("--force", action="store_true",
+                    help="저부하 창을 벗어나도 강행한다")
     ap.add_argument("--no-anchors", action="store_true", help="flagship 앵커 제외")
     ap.add_argument("--k", type=int, default=CONSISTENCY_K, help="일관성 샘플 반복 수")
     ap.add_argument("--limit", type=int, default=None, help="후보 풀에서 앞 N개만")
@@ -93,9 +135,10 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    models = apply_capabilities(get_models(args.models, include_anchors=not args.no_anchors))
+    models = apply_capabilities(
+        get_models(args.models, include_anchors=not args.no_anchors, region=args.region))
     if not models:
-        sys.exit("돌릴 모델이 없다. .env에 API 키가 있는지 확인할 것.")
+        sys.exit("돌릴 모델이 없다. .env에 API 키가 있는지, --region이 맞는지 확인할 것.")
 
     missing = [m.key for m in models if not m.env_key()]
     if missing:
@@ -113,12 +156,15 @@ def main() -> None:
     print(f"문항: {len(pool)}개 | 이미 끝난 콜: {len(done)}회")
 
     if args.dry_run:
+        check_window(models, force=True)
         dry_run_report(models, pool, args.k, specs)
         return
 
     if not specs:
         print("남은 콜이 없다. 보정 패스가 이미 끝났다.")
         return
+
+    check_window(models, args.force)
 
     run_id = uuid.uuid4().hex[:12]
     logger = JsonlLogger(log_path)

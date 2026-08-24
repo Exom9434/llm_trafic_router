@@ -33,8 +33,10 @@ python itembank.py --per-subject 80
 # 2. 비용부터 확인
 python calibrate.py --dry-run
 
-# 3. 보정 패스 실행 (저부하 시간에)
-python calibrate.py --k 5
+# 3. 보정 패스 실행 — 지역별로 나눠 돌린다
+python calibrate.py --region us --k 5    # KST 10~17시
+python calibrate.py --region cn --k 5    # KST 23~07시
+python calibrate.py --region kr --k 5    # KST 23~07시
 
 # 4. 문항 은행 + 노이즈 바닥선
 python select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
@@ -46,6 +48,12 @@ python budget.py
 키 설정 상태가 궁금하면 아무 때나 `python check_env.py`를 친다.
 
 3번은 중단해도 된다. 같은 명령을 다시 치면 이미 끝난 콜은 건너뛴다.
+
+지역을 나누는 이유는 9개 모델이 동시에 한가한 시각이 없기 때문이다. 미국
+업무시간은 KST 밤이고 중국·한국 업무시간은 KST 낮이다. 어떤 모델의 노이즈
+바닥선을 그 모델의 피크 시간에 재면 바닥선이 이미 부하를 먹은 값이 되어
+본실험의 대비가 줄어든다. 러너는 현재 시각이 저부하 창을 벗어나면 실행을
+막고 안내를 띄운다. 굳이 돌리려면 `--force`를 붙인다.
 
 ## 파일 구성
 
