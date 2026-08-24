@@ -21,8 +21,13 @@ uv run selftest.py
 
 ## 실행 순서
 
+모든 명령은 `V2/runner`에서 실행한다. 저장소 어디에 있든 다음 한 줄로 옮겨 갈 수 있다.
+
 ```bash
-cd V2/runner
+cd "$(git rev-parse --show-toplevel)/V2/runner"
+```
+
+```bash
 uv sync                       # .venv 생성 + 의존성 설치 + uv.lock 갱신
 
 # 0. 프로바이더 실지원 확인 (모델당 2콜, 사실상 무료)

@@ -20,6 +20,11 @@ dev = [
     "ruff>=0.6",
 ]
 
+# 이 디렉터리는 설치 가능한 패키지가 아니라 스크립트 묶음이다.
+# 명시하지 않으면 uv가 llm_router_v2_runner 모듈을 찾아 빌드하려다 실패한다.
+[tool.uv]
+package = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
