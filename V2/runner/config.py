@@ -152,15 +152,18 @@ LINEUP: list[ModelSpec] = [
         adapter="openai_compat",
         api_key_env="DEEPSEEK_API_KEY",
         base_url="https://api.deepseek.com/v1",
-        supports_logprobs="yes",
+        supports_logprobs="no",             # 2026-08-24 실측: 문서와 달리 반환하지 않는다
         price_in=0.44, price_out=1.32,      # 피크 단가. 오프피크는 정확히 반값.
+        direct_max_tokens=128,              # 실측: 추론에 53~56토큰을 쓴다. 여유를 둔다
         pinned=False,
         notes=(
             "구 deepseek-chat은 2026-07-24 서비스 종료. v4-flash가 후계다. "
             "logprobs·top_logprobs(0~20) 지원, system_fingerprint 제공 — 라인업에서 "
             "가장 정보량이 많은 프로바이더다. "
             "2026-08-16부터 피크/오프피크 이중 요금제. 피크 01:00-04:00, 06:00-10:00 UTC. "
-            "이 공표 자체가 '시간대=부하' 가정의 외부 검증 재료다(설계서 3.5절)."
+            "이 공표 자체가 '시간대=부하' 가정의 외부 검증 재료다(설계서 3.5절). "
+            "2026-08-24 실측: 추론을 끄는 파라미터가 없고 항상 53~56토큰을 쓴다. "
+            "추론 토큰 지표를 가장 안정적으로 얻는 모델이다."
         ),
     ),
     ModelSpec(
@@ -171,33 +174,36 @@ LINEUP: list[ModelSpec] = [
         adapter="openai_compat",
         api_key_env="DASHSCOPE_API_KEY",
         base_url="https://dashscope-us.aliyuncs.com/compatible-mode/v1",
-        supports_logprobs="yes",
+        supports_logprobs="unknown",        # 2026-08-24 실측: logprobs 요청이 거절된다. 사유 확인 필요
         price_in=0.03, price_out=0.13,
-        extra_body={"enable_thinking": False},
+        direct_max_tokens=768,              # 실측: 추론에 477토큰을 쓴다
+        extra_body={"enable_thinking": True},
         pinned=True,
         notes=(
             "qwen3.5-flash는 legacy로 밀렸다. 3.7-flash에 날짜 스냅샷이 있어 "
             "라인업에서 유일하게 진짜 버전 고정이 된다. "
-            "thinking 기본 ON이라 enable_thinking=false 필수 — 긴 CoT가 단일 최대 비용 요인이다. "
+            "2026-08-24 실측: thinking을 끄면 평균속도 문제를 틀리고(A), 켜면 맞힌다(B). "
+            "추론이 정답률에 직결된다는 증거이며, 우리 가설의 인과 사슬을 이 모델이 실증한다. "
+            "그래서 켠 채로 운용한다. 추론 477토큰을 써도 단가가 낮아 콜당 $0.00007에 그친다. "
             "단가는 서드파티 출처라 콘솔에서 재확인할 것."
         ),
     ),
     ModelSpec(
-        key="upstage_solar_pro4",
+        key="upstage_solar_pro3",
         region="kr",
         provider="upstage",
-        model="solar-pro4",
+        model="solar-pro3",
         adapter="openai_compat",
         api_key_env="UPSTAGE_API_KEY",
         base_url="https://api.upstage.ai/v1",
         supports_logprobs="no",
-        price_in=0.30, price_out=1.20,
-        direct_max_tokens=16,
-        extra_body={"reasoning_effort": "low"},
-        pinned=False,
+        price_in=0.15, price_out=0.60,
+        direct_max_tokens=64,
         notes=(
-            "GA 2026-08-10. solar-pro3($0.15/$0.60)도 아직 살아 있어 비용이 문제면 대안. "
-            "logprobs는 지원 파라미터 목록에 없어 미지원으로 판단했으나 단정은 불가 — smoke_test로 확정할 것."
+            "solar-pro4에서 되돌렸다. 2026-08-24 실측에서 pro4는 출력 상한 512토큰을 "
+            "추론으로 전부 소진하고도 답을 내지 못했다(추론 512 = 출력 512). "
+            "pro3는 단가가 절반이고 추론 모델이 아닐 가능성이 높다. "
+            "교체 후 smoke test로 재확인할 것 — 여전히 답을 못 내면 라인업에서 뺀다."
         ),
     ),
     ModelSpec(
