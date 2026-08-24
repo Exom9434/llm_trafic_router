@@ -82,14 +82,16 @@ API 키 3개를 발급받아 `.env`에 넣는 일이 유일한 병목이다. `DE
 
 ```bash
 cd V2/runner
-pip install -r requirements.txt
-python check_env.py                    # 9/9 확인
-python smoke_test.py                   # 실지원 확인, 모델당 2콜
-python itembank.py --per-subject 80    # 후보 풀 480문항
-python calibrate.py --dry-run          # 비용 선확인
-python calibrate.py --k 5              # 보정 패스, 약 $2.7 (라인업만)
-python select_bank.py                  # 문항 은행 + 노이즈 바닥선
-python budget.py                       # 실측 기반 투영, 지출 상한 확정
+uv sync                                 # 의존성 설치
+uv run check_env.py                     # 9/9 확인
+uv run smoke_test.py                    # 실지원 확인, 모델당 2콜
+uv run itembank.py --per-subject 80     # 후보 풀 480문항
+uv run calibrate.py --dry-run           # 비용 선확인
+uv run calibrate.py --region us --k 5   # 보정 패스, 지역별로 (KST 10~17시)
+uv run calibrate.py --region cn --k 5   # (KST 23~07시)
+uv run calibrate.py --region kr --k 5   # (KST 23~07시)
+uv run select_bank.py                   # 문항 은행 + 노이즈 바닥선
+uv run budget.py                        # 실측 기반 투영, 지출 상한 확정
 ```
 
 `smoke_test.py` 결과에서 세 칸을 확인한다. 답 칸은 전부 `C`여야 하고, 추론 토큰은 0이어야 하며, logprob은 DeepSeek·Qwen만 `O`가 예상값이다. 추론 토큰이 0이 아니면 `config.py`의 `extra_body`가 안 먹은 것이고, 본실험 비용이 약 $80에서 네 배로 뛴다.

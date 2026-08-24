@@ -13,7 +13,7 @@ API 키 없이 파이프라인 전체가 도는지 먼저 본다.
 
 ```bash
 cd V2/runner
-python selftest.py
+uv run selftest.py
 ```
 
 가짜 어댑터로 864콜을 흉내 내고, 프롬프트·파싱·재개·선별·바닥선 산출을
@@ -22,30 +22,41 @@ python selftest.py
 ## 실행 순서
 
 ```bash
-pip install -r requirements.txt
+cd V2/runner
+uv sync                       # .venv 생성 + 의존성 설치 + uv.lock 갱신
 
 # 0. 프로바이더 실지원 확인 (모델당 2콜, 사실상 무료)
-python smoke_test.py
+uv run smoke_test.py
 
 # 1. 후보 문항 풀 만들기 (MMLU-Pro, 과목당 80문항)
-python itembank.py --per-subject 80
+uv run itembank.py --per-subject 80
 
 # 2. 비용부터 확인
-python calibrate.py --dry-run
+uv run calibrate.py --dry-run
 
 # 3. 보정 패스 실행 — 지역별로 나눠 돌린다
-python calibrate.py --region us --k 5    # KST 10~17시
-python calibrate.py --region cn --k 5    # KST 23~07시
-python calibrate.py --region kr --k 5    # KST 23~07시
+uv run calibrate.py --region us --k 5    # KST 10~17시
+uv run calibrate.py --region cn --k 5    # KST 23~07시
+uv run calibrate.py --region kr --k 5    # KST 23~07시
 
 # 4. 문항 은행 + 노이즈 바닥선
-python select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
+uv run select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
 
 # 5. 실측 토큰으로 본실험 비용 투영 + 지출 상한 산출
-python budget.py
+uv run budget.py
 ```
 
-키 설정 상태가 궁금하면 아무 때나 `python check_env.py`를 친다.
+키 설정 상태가 궁금하면 아무 때나 `uv run check_env.py`를 친다.
+
+## 의존성
+
+`pyproject.toml`이 정본이다. `uv sync`가 `.venv`를 만들고 `uv.lock`을 갱신한다.
+**`uv.lock`은 커밋한다** — 2주 실험 도중 의존성이 바뀌면 측정 환경이 달라지기
+때문이다. `requirements.txt`는 pip을 쓸 때를 위한 사본으로만 남겨 두었다.
+
+의존성은 셋뿐이다. 프로바이더 SDK를 쓰지 않고 `requests`로 직접 치는데,
+상태코드·레이트리밋 헤더·request-id를 로깅 스키마에 남기려면 원시 응답이
+필요하기 때문이다. `datasets`는 `itembank.py`가 MMLU-Pro를 내려받을 때만 쓴다.
 
 3번은 중단해도 된다. 같은 명령을 다시 치면 이미 끝난 콜은 건너뛴다.
 

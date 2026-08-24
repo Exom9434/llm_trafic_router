@@ -1,0 +1,25 @@
+[project]
+name = "llm-router-v2-runner"
+version = "0.1.0"
+description = "상용 LLM API의 부하 시간대 품질 저하 연구 — 보정 패스 러너"
+requires-python = ">=3.10"
+
+# 의존성을 최소로 유지한다. 프로바이더 SDK를 쓰지 않고 requests로 직접
+# 치는 이유는, 상태코드·레이트리밋 헤더·request-id를 로깅 스키마에 그대로
+# 남기려면 원시 응답이 필요하기 때문이다(설계서 4.3절).
+dependencies = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    # itembank.py가 MMLU-Pro를 내려받을 때만 쓴다. 무겁지만 파이프라인의
+    # 정규 단계이므로 선택 의존성으로 빼지 않았다.
+    "datasets>=2.19",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

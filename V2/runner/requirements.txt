@@ -1,5 +1,6 @@
-# 러너 실행에 필요한 최소 의존성
+# pyproject.toml이 정본이다. 이 파일은 uv 대신 pip을 쓸 때를 위한 사본이다.
+#   uv:  uv sync
+#   pip: pip install -r requirements.txt
 requests>=2.31
 python-dotenv>=1.0
-# itembank.py(후보 풀 생성)에만 필요하다. 보정 패스 실행에는 불필요.
 datasets>=2.19

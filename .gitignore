@@ -24,3 +24,8 @@ report/main.tex
 report/references.bib
 
 .DS_Store
+
+# uv / venv
+.venv/
+uv.lock.bak
+.python-version
