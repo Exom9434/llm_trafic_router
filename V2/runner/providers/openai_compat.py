@@ -26,10 +26,12 @@ class OpenAICompatAdapter(BaseAdapter):
         payload = {
             "model": self.spec.model,
             "messages": messages,
-            "temperature": temperature,
             # reasoning 모델은 max_tokens를 안 받고 max_completion_tokens를 받는다.
             self.spec.max_tokens_param: max_tokens,
         }
+        # temperature를 폐기한 모델에 보내면 400이 난다.
+        if self.spec.supports_temperature:
+            payload["temperature"] = temperature
         # thinking/reasoning 차단 같은 프로바이더별 파라미터. 안 넣으면 추론 토큰이
         # 출력 상한을 먹어 빈 응답이 온다.
         payload.update(self.spec.extra_body)

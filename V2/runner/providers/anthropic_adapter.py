@@ -31,8 +31,10 @@ class AnthropicAdapter(BaseAdapter):
             "model": self.spec.model,
             "messages": chat,
             "max_tokens": max_tokens,
-            "temperature": temperature,
         }
+        # Sonnet 5는 temperature를 폐기해 보내면 400을 낸다.
+        if self.spec.supports_temperature:
+            payload["temperature"] = temperature
         if system_parts:
             payload["system"] = "\n".join(system_parts)
         # Sonnet 5는 adaptive thinking이 기본 ON이라 disabled를 명시해야 한다.

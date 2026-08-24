@@ -36,15 +36,17 @@ class HyperClovaAdapter(BaseAdapter):
         }
 
     def _payload(self, messages, temperature, max_tokens, want_logprobs, top_logprobs) -> dict:
-        return {
+        payload = {
             "messages": messages,
             "maxTokens": max_tokens,
-            "temperature": temperature,
             "topP": 0.8,
             "topK": 0,
             "repetitionPenalty": 1.1,
             "includeAiFilters": False,
         }
+        if self.spec.supports_temperature:
+            payload["temperature"] = temperature
+        return payload
 
     def _parse(self, data: dict) -> RawResult:
         status = (data.get("status") or {})

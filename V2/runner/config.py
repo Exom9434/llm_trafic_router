@@ -87,6 +87,9 @@ class ModelSpec:
     direct_max_tokens: int = 8
     # thinking/reasoning을 끄거나 최소화하는 프로바이더별 파라미터.
     extra_body: dict = field(default_factory=dict)
+    # temperature를 받는가. 2026-08 기준 claude-sonnet-5가 거부한다.
+    # 못 받으면 일관성 프로브는 같은 요청을 반복해 모델 기본 샘플링에 맡긴다.
+    supports_temperature: bool = True
     # 버전 고정이 가능한가. 불가능하면 fingerprint·반환모델로 사후 탐지한다.
     pinned: bool = False
     notes: str = ""
@@ -263,11 +266,14 @@ ANCHORS: list[ModelSpec] = [
         supports_logprobs="no",
         price_in=2.00, price_out=10.00,
         extra_body={"thinking": {"type": "disabled"}},
+        supports_temperature=False,
         pinned=True,
         notes=(
             "티어 대조군 B. GA 2026-06-30. 구 claude-sonnet-4-5-20250929는 은퇴 하한이 "
             "2026-09-29라 실험 기간과 겹칠 위험이 있었다. "
-            "adaptive thinking이 기본 ON이라 disabled를 명시해야 한다."
+            "adaptive thinking이 기본 ON이라 disabled를 명시해야 한다. "
+            "2026-08-24 실측: temperature를 보내면 400을 낸다"
+            "(\'temperature is deprecated for this model\'). 라인업에서 유일하다."
         ),
     ),
 ]

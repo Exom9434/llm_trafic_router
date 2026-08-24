@@ -104,6 +104,8 @@ def main() -> None:
             "reachable": raw.error is None,
             "supports_logprobs": supports,
             "logprobs_request_rejected": used_fallback,
+            # 거절 사유를 남긴다. 미지원인지 파라미터 문제인지 나중에 가려야 한다.
+            "logprobs_error": raw_lp.error if used_fallback else None,
             "returned_model": raw.returned_model,
             "system_fingerprint": raw.system_fingerprint,
             "answered_single_letter": letter is not None,
