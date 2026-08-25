@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# PowerShell 5.1은 BOM 없는 .ps1을 cp949로 읽는다. 바이트를 건드리지 않는다.
+*.ps1 -text
