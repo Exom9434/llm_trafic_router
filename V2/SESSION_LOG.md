@@ -85,7 +85,7 @@ cd V2/runner
 uv sync                                 # 의존성 설치
 uv run check_env.py                     # 9/9 확인
 uv run smoke_test.py                    # 실지원 확인, 모델당 2콜
-uv run itembank.py --per-subject 80     # 후보 풀 480문항
+uv run itembank.py --per-subject 120    # 후보 풀 720문항
 uv run calibrate.py --dry-run           # 비용 선확인
 uv run calibrate.py --region us --k 5   # 보정 패스, 지역별로 (KST 10~17시)
 uv run calibrate.py --region cn --k 5   # (KST 23~07시)

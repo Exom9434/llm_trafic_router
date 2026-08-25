@@ -1,11 +1,19 @@
 """후보 문항 풀 만들기 (설계서 6절 1~2단계).
 
 보정 패스가 통과시킬 후보 풀을 MMLU-Pro에서 만든다. 이 단계에서 하는 일은
-과목 균형 맞추기와 명백한 불량 문항 제외까지다. 실제 난이도 선별(40~85%)은
-모델을 돌려 봐야 알 수 있으므로 select_bank.py의 몫이다.
+과목 균형 맞추기와 명백한 불량 문항 제외까지다.
+
+**난이도는 여기서 거르지 않는다.** MMLU-Pro에 난이도 라벨이 없기도 하지만,
+더 근본적으로는 "적당한 난이도"가 문항의 속성이 아니라 우리 라인업과의
+관계이기 때문이다. 어떤 문항이 40~85% 구간에 드는지는 아홉 모델을 실제로
+통과시켜 봐야 안다. 그 측정이 calibrate.py이고, 선별이 select_bank.py다.
+
+따라서 이 스크립트는 과목별로 무작위 추출만 한다. 후보를 넉넉히 뽑아야
+하는 이유도 여기 있다. 밴드를 통과할 비율을 미리 알 수 없으므로, 최종
+은행 크기(과목당 50)의 두 배 이상을 후보로 잡는다.
 
 실행:
-    python itembank.py --per-subject 80 --seed 20260722
+    python itembank.py --per-subject 120 --seed 42
 결과:
     data/candidate_pool.json
 """
@@ -131,9 +139,10 @@ def load_pool(path: Path | None = None) -> list[dict]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="MMLU-Pro 후보 문항 풀 생성")
-    ap.add_argument("--per-subject", type=int, default=80,
-                    help="과목당 후보 수 (6과목 기준 총 per-subject*6)")
-    ap.add_argument("--seed", type=int, default=20260722)
+    ap.add_argument("--per-subject", type=int, default=120,
+                    help="과목당 후보 수 (6과목 기준 총 per-subject*6). "
+                         "난이도 밴드를 통과할 비율을 모르므로 넉넉히 잡는다")
+    ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--cache-dir", default=None, help="HF datasets 캐시 경로")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
