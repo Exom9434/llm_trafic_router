@@ -104,6 +104,9 @@ class ModelSpec:
     max_tokens_param: str = "max_tokens"
     # 직답 프로브의 출력 상한. thinking을 완전히 못 끄는 모델은 더 줘야 한다.
     direct_max_tokens: int = 8
+    # 실측 평균 출력 토큰(2026-08-24 diag_reasoning). 비용 추정에 쓴다.
+    # 상한을 그대로 쓰면 과대평가된다 — Gemini는 상한 24인데 실측이 1이다.
+    measured_output_tokens: int | None = None
     # thinking/reasoning을 끄거나 최소화하는 프로바이더별 파라미터.
     extra_body: dict = field(default_factory=dict)
     # temperature를 받는가. 2026-08 기준 claude-sonnet-5가 거부한다.
@@ -126,6 +129,7 @@ KRW_PER_USD = 1387.0          # 2026-08-22 중간환율
 LINEUP: list[ModelSpec] = [
     ModelSpec(
         key="openai_gpt56_luna",
+        measured_output_tokens=4,
         provider="openai",
         model="gpt-5.6-luna",
         adapter="openai_compat",
@@ -149,6 +153,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="google_gemini_flash_lite",
+        measured_output_tokens=1,
         provider="google",
         model="gemini-3.5-flash-lite",
         adapter="openai_compat",
@@ -168,6 +173,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="deepseek_v4_flash",
+        measured_output_tokens=72,
         region="cn",
         provider="deepseek",
         model="deepseek-v4-flash",
@@ -191,6 +197,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="qwen_flash",
+        measured_output_tokens=457,
         region="cn",
         provider="qwen",
         model="qwen3.7-flash-2026-07-15",
@@ -214,6 +221,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="upstage_solar_pro3",
+        measured_output_tokens=3,
         region="kr",
         provider="upstage",
         model="solar-pro3",
@@ -232,6 +240,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="anthropic_haiku",
+        measured_output_tokens=4,
         provider="anthropic",
         model="claude-haiku-4-5-20251001",
         adapter="anthropic",
@@ -247,6 +256,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="naver_hcx_dash",
+        measured_output_tokens=2,
         region="kr",
         provider="naver",
         model="HCX-DASH-002",
@@ -274,6 +284,7 @@ LINEUP: list[ModelSpec] = [
 ANCHORS: list[ModelSpec] = [
     ModelSpec(
         key="openai_gpt56_sol",
+        measured_output_tokens=4,
         provider="openai",
         model="gpt-5.6-sol",
         adapter="openai_compat",
@@ -288,6 +299,7 @@ ANCHORS: list[ModelSpec] = [
     ),
     ModelSpec(
         key="anthropic_sonnet5",
+        measured_output_tokens=3,
         provider="anthropic",
         model="claude-sonnet-5",
         adapter="anthropic",

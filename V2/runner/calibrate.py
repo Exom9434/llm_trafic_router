@@ -73,15 +73,26 @@ def check_window(models, force: bool) -> None:
         label = REGION_LABELS.get(region, region)
         print(f"  KST {window[0]:02d}~{window[1]:02d}시  python calibrate.py --region {region}"
               f"   # {label}")
-    print("\n그래도 지금 돌리려면 --force를 붙인다. 노이즈 바닥선이 부하를 먹는다.")
     if not force:
+        print("\n그래도 지금 돌리려면 --force를 붙인다. 노이즈 바닥선이 부하를 먹는다.")
         sys.exit(1)
-    print("--force 지정됨. 계속한다.\n")
+    print()
 
 
-def build_call_specs(models, pool, k: int, done: set[str]) -> list[CallSpec]:
+def k_for(model, k: int, anchor_k: int) -> int:
+    """앵커는 반복을 줄인다.
+
+    반복의 목적은 자기일관성 추정인데, 앵커는 축소 일정에서 자기일관성을
+    쓰지 않기로 했다(설계서 7.4절). 그래서 temp0 한 번이면 난이도 기여와
+    천장 확인이라는 앵커의 역할이 충족된다. 비용이 1/6로 준다.
+    """
+    return anchor_k if model.tier == "flagship" else k
+
+
+def build_call_specs(models, pool, k: int, done: set[str], anchor_k: int = 1) -> list[CallSpec]:
     specs: list[CallSpec] = []
     for model in models:
+        model_k = k_for(model, k, anchor_k)
         for item in pool:
             candidates = [
                 CallSpec(
@@ -90,7 +101,7 @@ def build_call_specs(models, pool, k: int, done: set[str]) -> list[CallSpec]:
                     rep=0, phase="calibration",
                 )
             ]
-            for r in range(1, k + 1):
+            for r in range(1, model_k + 1):
                 candidates.append(
                     CallSpec(
                         model=model, item=item, mode="direct",
@@ -102,21 +113,32 @@ def build_call_specs(models, pool, k: int, done: set[str]) -> list[CallSpec]:
     return specs
 
 
-def dry_run_report(models, pool, k: int, specs) -> None:
-    per_item_calls = 1 + k
-    print(f"모델 {len(models)}개 × 문항 {len(pool)}개 × 콜 {per_item_calls}회")
-    print(f"남은 콜: {len(specs)}회")
+def dry_run_report(models, pool, k: int, specs, anchor_k: int) -> None:
+    print(f"문항 {len(pool)}개 | 라인업 콜 {1 + k}회/문항 | 앵커 콜 {1 + anchor_k}회/문항")
+    print(f"남은 콜: {len(specs):,}회\n")
+
     total = 0.0
+    estimated = []
     for m in models:
         n = sum(1 for cs in specs if cs.model.key == m.key)
-        cost = n * (EST_INPUT_TOKENS / 1e6 * m.price_in + m.direct_max_tokens / 1e6 * m.price_out)
+        # 상한이 아니라 실측 출력 토큰을 쓴다. 상한을 쓰면 크게 과대평가된다.
+        out = m.measured_output_tokens
+        if out is None:
+            out = m.direct_max_tokens
+            estimated.append(m.key)
+        cost = n * (EST_INPUT_TOKENS / 1e6 * m.price_in + out / 1e6 * m.price_out)
         total += cost
-        print(f"  {m.key:28s} {n:6d}콜  ~${cost:6.3f}")
-    print(f"  {'합계':28s} {len(specs):6d}콜  ~${total:6.3f}")
-    print("\n(입력 토큰은 문항당 %d개로 가정한 근사치다.)" % EST_INPUT_TOKENS)
-    print("주의: 출력은 상한까지 다 쓴다고 가정했다. thinking을 못 끄는 모델은")
-    print("      추론 토큰이 더 붙어 실제 비용이 이보다 커진다. HyperCLOVA는 단가")
-    print("      미확인이라 아예 빠져 있다.")
+        tier = "앵커" if m.tier == "flagship" else "    "
+        print(f"  {m.key:28s} {tier} {n:6,}콜  출력 {out:4d}토큰  ~${cost:6.3f}")
+    print(f"  {'합계':28s}      {len(specs):6,}콜{'':14s}~${total:6.3f}")
+
+    print(f"\n입력은 문항당 {EST_INPUT_TOKENS}토큰으로 가정했다.")
+    print("출력은 2026-08-24 실측 평균이다(diag_reasoning).")
+    if estimated:
+        print(f"실측값이 없어 상한으로 대체한 모델: {', '.join(estimated)} — 과대평가된다.")
+    unpriced = [m.key for m in models if m.price_in == 0 and m.price_out == 0]
+    if unpriced:
+        print(f"단가 미확인이라 빠진 모델: {', '.join(unpriced)} — 과소평가된다.")
 
 
 def main() -> None:
@@ -129,6 +151,8 @@ def main() -> None:
                     help="저부하 창을 벗어나도 강행한다")
     ap.add_argument("--no-anchors", action="store_true", help="flagship 앵커 제외")
     ap.add_argument("--k", type=int, default=CONSISTENCY_K, help="일관성 샘플 반복 수")
+    ap.add_argument("--anchor-k", type=int, default=1,
+                    help="앵커의 반복 수. 앵커는 자기일관성을 쓰지 않으므로 기본 1이다")
     ap.add_argument("--limit", type=int, default=None, help="후보 풀에서 앞 N개만")
     ap.add_argument("--log", default=None, help="JSONL 로그 경로")
     ap.add_argument("--vantage", default="local", help="측정 지점 라벨")
@@ -150,14 +174,15 @@ def main() -> None:
 
     log_path = Path(args.log) if args.log else DEFAULT_LOG
     done = load_done_keys(log_path)
-    specs = build_call_specs(models, pool, args.k, done)
+    specs = build_call_specs(models, pool, args.k, done, args.anchor_k)
 
     print(f"모델: {', '.join(m.key for m in models)}")
     print(f"문항: {len(pool)}개 | 이미 끝난 콜: {len(done)}회")
 
     if args.dry_run:
+        print("\n(dry-run이므로 콜을 쏘지 않는다. 아래 시간대 안내는 참고용이다.)")
         check_window(models, force=True)
-        dry_run_report(models, pool, args.k, specs)
+        dry_run_report(models, pool, args.k, specs, args.anchor_k)
         return
 
     if not specs:
