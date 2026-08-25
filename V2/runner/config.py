@@ -21,8 +21,27 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+
+def _force_utf8_console() -> None:
+    """윈도우 콘솔의 기본 코드페이지(한국어 환경은 cp949)를 UTF-8로 바꾼다.
+
+    출력에 →·—… 같은 기호가 섞여 있어 cp949 콘솔에서 UnicodeEncodeError로
+    죽을 수 있다. 2주 무인 실행 중에 출력 한 줄 때문에 러너가 멎으면
+    곤란하므로 import 시점에 손봐 둔다. macOS·Linux에서는 아무 일도 없다.
+    """
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
+_force_utf8_console()
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent.parent           # llm_trafic_router/
