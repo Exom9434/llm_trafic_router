@@ -44,6 +44,27 @@ uv run calibrate.py --region us --k 5    # KST 10~17시
 uv run calibrate.py --region cn --k 5    # KST 23~07시
 uv run calibrate.py --region kr --k 5    # KST 23~07시
 
+`--wait`을 붙이면 시간대 밖일 때 종료하는 대신 열릴 때까지 기다린다.
+세 배치를 한 줄로 걸어 두고 자면 된다 — 단 **야간 배치를 앞에 두어야**
+오늘 밤을 버리지 않는다.
+
+```bash
+uv run calibrate.py --region cn --k 5 --wait                    # 23시에 시작
+uv run calibrate.py --region kr --k 5 --wait                    # 이어서
+uv run calibrate.py --region us --k 5 --wait --min-remaining 2  # 내일 10시
+```
+
+`--min-remaining`은 "시간대가 이만큼 남아 있어야 시작한다"는 뜻이다.
+붙이지 않으면 1분만 남아도 시작하고, 그러면 대부분의 콜이 시간대 밖에서
+나가 노이즈 바닥선이 부하를 먹는다. 미국 배치는 15,840콜로 세 배치 중
+가장 크니 2시간을 잡아 둔다. 중국·한국은 시간대가 8시간이라 굳이 필요 없다.
+
+대기는 60초마다 시각을 다시 보는 방식이다. 랩탑이 절전에서 깨면 시계가
+튀어 미리 계산한 대기 시간이 어긋나기 때문이다. 30분마다 생존 신호를
+남기므로 멈춘 것과 자는 것을 로그로 구분할 수 있다. 대기 로직은
+`config.py`의 `wait_until_window()`에 있고, 본실험 스케줄러가 슬롯 대기에
+그대로 쓴다.
+
 # 4. 문항 은행 + 노이즈 바닥선
 uv run select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
 

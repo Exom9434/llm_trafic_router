@@ -22,7 +22,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 def _force_utf8_console() -> None:
@@ -406,6 +408,99 @@ def in_window(hour_kst: int, window: tuple[int, int]) -> bool:
     if start <= end:
         return start <= hour_kst < end
     return hour_kst >= start or hour_kst < end
+
+
+KST = timezone(timedelta(hours=9))
+
+
+def _fmt_span(sec: int) -> str:
+    h, m = sec // 3600, sec % 3600 // 60
+    if h and m:
+        return f"{h}시간 {m}분"
+    return f"{h}시간" if h else f"{m}분"
+
+
+def _seconds_to_next_start(now: datetime, window: tuple[int, int]) -> int:
+    """지금이 열려 있든 아니든, 다음 시간대 시작까지 남은 초."""
+    target = now.replace(hour=window[0], minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return max(0, int((target - now).total_seconds()))
+
+
+def seconds_until_window(now: datetime, window: tuple[int, int]) -> int:
+    """저부하 시간대가 열릴 때까지 남은 초. 이미 열려 있으면 0."""
+    if in_window(now.hour, window):
+        return 0
+    return _seconds_to_next_start(now, window)
+
+
+def seconds_left_in_window(now: datetime, window: tuple[int, int]) -> int:
+    """저부하 시간대가 닫히기까지 남은 초. 닫혀 있으면 0."""
+    if not in_window(now.hour, window):
+        return 0
+    target = now.replace(hour=window[1] % 24, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return max(0, int((target - now).total_seconds()))
+
+
+def wait_until_window(
+    window: tuple[int, int],
+    label: str = "",
+    min_remaining_sec: int = 0,
+    poll_sec: int = 60,
+    heartbeat_sec: int = 1800,
+    log=print,
+) -> None:
+    """저부하 시간대가 열릴 때까지 기다린다. 이미 열려 있으면 즉시 반환한다.
+
+    `min_remaining_sec`을 주면 "열려 있지만 곧 닫히는" 경우도 기다린다.
+    닫히기까지 남은 시간이 그보다 짧으면 다음 회차를 노린다. 시간대 끝을
+    넘겨 실행하면 노이즈 바닥선이 부하를 먹어 본실험의 대비가 줄기 때문이다.
+
+    남은 시간을 한 번에 자지 않고 poll_sec 간격으로 현재 시각을 다시 본다.
+    랩탑이 절전에서 깨면 시계가 튀므로 미리 계산한 값을 믿을 수 없다.
+    대기 중에는 heartbeat_sec마다 생존 신호를 남긴다 — 로그가 조용하면
+    멈춘 것인지 자는 것인지 구분할 수 없다.
+
+    본실험 스케줄러(로드맵 3단계)가 슬롯 대기에 그대로 쓸 수 있도록
+    calibrate.py가 아니라 여기에 둔다.
+    """
+    tag = f"{label} " if label else ""
+    waiting_since = None
+    last_beat = None
+
+    while True:
+        now = datetime.now(KST)
+        left = seconds_left_in_window(now, window)
+
+        if left > 0 and left >= min_remaining_sec:
+            if waiting_since is not None:
+                waited = int((now - waiting_since).total_seconds())
+                log(f"[대기 종료] {now:%m-%d %H:%M} KST — {tag}저부하 시간대가 열렸다"
+                    f"({_fmt_span(waited)} 기다렸다). 시작한다.")
+            return
+
+        if left > 0:
+            reason = (f"지금 열려 있으나 닫히기까지 {_fmt_span(left)}뿐이라"
+                      f" {_fmt_span(min_remaining_sec)}짜리 작업을 시작하지 않는다")
+        else:
+            reason = "아직 열리지 않았다"
+        remain = _seconds_to_next_start(now, window)
+
+        if waiting_since is None:
+            waiting_since = now
+            last_beat = now
+            log(f"[대기 시작] {now:%m-%d %H:%M} KST — {tag}저부하 시간대는 "
+                f"KST {window[0]:02d}~{window[1]:02d}시다. {reason}.")
+            log(f"             다음 시작까지 약 {_fmt_span(remain)}. "
+                f"{poll_sec}초마다 시각을 다시 본다. Ctrl+C로 중단한다.")
+        elif (now - last_beat).total_seconds() >= heartbeat_sec:
+            last_beat = now
+            log(f"[대기 중] {now:%m-%d %H:%M} KST — {tag}다음 시작까지 약 {_fmt_span(remain)}")
+
+        time.sleep(max(1, min(poll_sec, remain)))
 
 
 # ─────────────────────────────────────────────────────────────

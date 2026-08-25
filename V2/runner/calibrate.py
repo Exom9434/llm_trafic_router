@@ -11,6 +11,7 @@
     python calibrate.py --pool data/candidate_pool.json --k 5
     python calibrate.py --models openai_gpt4o_mini anthropic_haiku --limit 20
     python calibrate.py --dry-run          # 콜 수·예상 비용만 계산
+    python calibrate.py --region cn --wait # 23시에 알아서 시작한다
 """
 
 from __future__ import annotations
@@ -19,10 +20,8 @@ import argparse
 import json
 import sys
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
-
-KST = timezone(timedelta(hours=9))
 
 from calllog import JsonlLogger, load_done_keys, read_records
 from config import (
@@ -32,10 +31,13 @@ from config import (
     DIRECT_MAX_TOKENS,
     DIRECT_TEMPERATURE,
     OUTPUT_DIR,
+    KST,
     REGION_LABELS,
     apply_capabilities,
     get_models,
     in_window,
+    seconds_left_in_window,
+    wait_until_window,
 )
 from core import CallSpec, estimate_cost, run_batch
 from itembank import load_pool
@@ -45,6 +47,27 @@ DEFAULT_LOG = OUTPUT_DIR / "calibration_calls.jsonl"
 # 직답 프로브의 평균 입력 길이 추정치(문항 하나가 대략 이 정도 토큰이다).
 # --dry-run 비용 추정에만 쓴다.
 EST_INPUT_TOKENS = 320
+
+
+def wait_for_window(models, min_remaining_sec: int) -> None:
+    """--wait: 이 배치의 저부하 시간대가 열릴 때까지 잔다.
+
+    한 번에 한 시간대만 기다린다. 미국(10~17시)과 중국·한국(23~07시)은
+    서로 다른 구간이라 섞여 있으면 무엇을 기다릴지 정할 수 없다.
+    """
+    windows = {}
+    for m in models:
+        w = CALIBRATION_WINDOWS_KST.get(m.region)
+        if w:
+            windows[m.region] = w
+    distinct = set(windows.values())
+    if not distinct:
+        return
+    if len(distinct) > 1:
+        sys.exit("--wait은 한 번에 한 시간대만 기다린다. --region으로 나눠 돌릴 것.\n"
+                 "  예: --region cn --wait  →  --region kr --wait  →  --region us --wait")
+    label = "·".join(sorted({REGION_LABELS.get(r, r) for r in windows}))
+    wait_until_window(distinct.pop(), label=label, min_remaining_sec=min_remaining_sec)
 
 
 def check_window(models, force: bool) -> None:
@@ -149,6 +172,11 @@ def main() -> None:
                     help="지역별로 나눠 돌린다. 보정 패스는 지역마다 저부하 시각이 다르다")
     ap.add_argument("--force", action="store_true",
                     help="저부하 시간대를 벗어나도 강행한다")
+    ap.add_argument("--wait", action="store_true",
+                    help="시간대 밖이면 종료하지 않고 열릴 때까지 기다린다")
+    ap.add_argument("--min-remaining", type=float, default=0.0, metavar="시간",
+                    help="시간대가 이만큼 남아 있어야 시작한다(--wait 전용). "
+                         "미국 배치는 콜이 가장 많으니 2 정도를 권한다")
     ap.add_argument("--no-anchors", action="store_true", help="flagship 앵커 제외")
     ap.add_argument("--k", type=int, default=CONSISTENCY_K, help="일관성 샘플 반복 수")
     ap.add_argument("--anchor-k", type=int, default=1,
@@ -189,7 +217,10 @@ def main() -> None:
         print("남은 콜이 없다. 보정 패스가 이미 끝났다.")
         return
 
-    check_window(models, args.force)
+    if args.wait:
+        wait_for_window(models, int(args.min_remaining * 3600))
+    else:
+        check_window(models, args.force)
 
     run_id = uuid.uuid4().hex[:12]
     logger = JsonlLogger(log_path)

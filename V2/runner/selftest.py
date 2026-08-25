@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import random
 import sys
+from datetime import datetime
 import tempfile
 import uuid
 from pathlib import Path
@@ -20,7 +21,14 @@ from pathlib import Path
 import prompts
 from budget import DayLedger, SpendGuard, measure_token_profiles, project
 from calllog import JsonlLogger, load_done_keys, read_records
-from config import ModelSpec
+from config import (
+    KST,
+    ModelSpec,
+    in_window,
+    seconds_left_in_window,
+    seconds_until_window,
+    wait_until_window,
+)
 from core import CallSpec, run_batch
 from itembank import SUBJECTS
 from providers.base import RawResult
@@ -232,6 +240,82 @@ if __name__ == "__main__":
           all(r.get("reasoning_tokens") == 12 for r in rec_with_reasoning))
 
     # 5. 지출 가드 ────────────────────────────────────────
+    print("\n저부하 시간대 대기")
+
+    US, NIGHT = (10, 17), (23, 7)
+
+    def kst(h, m=0, day=25):
+        return datetime(2026, 8, day, h, m, tzinfo=KST)
+
+    # 자정을 넘어가는 구간
+    check("야간 시간대: 23시 안", in_window(23, NIGHT))
+    check("야간 시간대: 03시 안", in_window(3, NIGHT))
+    check("야간 시간대: 07시 밖", not in_window(7, NIGHT))
+    check("야간 시간대: 16시 밖", not in_window(16, NIGHT))
+
+    # 열릴 때까지
+    check("열려 있으면 0초", seconds_until_window(kst(2), NIGHT) == 0)
+    check("16:16 → 23시까지 6시간 44분",
+          seconds_until_window(kst(16, 16), NIGHT) == 6 * 3600 + 44 * 60,
+          str(seconds_until_window(kst(16, 16), NIGHT)))
+    check("18시 → 미국 시간대는 내일 10시",
+          seconds_until_window(kst(18), US) == 16 * 3600,
+          str(seconds_until_window(kst(18), US)))
+
+    # 닫히기까지 — 오늘 미국 배치를 접은 근거
+    check("닫혀 있으면 0초", seconds_left_in_window(kst(18), US) == 0)
+    check("16:16 → 미국 시간대 44분 남음",
+          seconds_left_in_window(kst(16, 16), US) == 44 * 60,
+          str(seconds_left_in_window(kst(16, 16), US)))
+    check("23:30 → 야간 시간대 7시간 30분 남음",
+          seconds_left_in_window(kst(23, 30), NIGHT) == 7 * 3600 + 30 * 60,
+          str(seconds_left_in_window(kst(23, 30), NIGHT)))
+    check("02:00 → 야간 시간대 5시간 남음",
+          seconds_left_in_window(kst(2), NIGHT) == 5 * 3600)
+
+    # wait_until_window: 가짜 시계로 대기 경로를 돈다
+    ticks = {"n": 0}
+    slept = []
+
+    def fake_now(seq):
+        it = iter(seq)
+        return lambda: next(it)
+
+    import config as _cfg
+    real_sleep, real_dt = _cfg.time.sleep, _cfg.datetime
+
+    class FakeDatetime:
+        seq = []
+        @classmethod
+        def now(cls, tz=None):
+            ticks["n"] += 1
+            return cls.seq[min(ticks["n"] - 1, len(cls.seq) - 1)]
+
+    _cfg.time.sleep = lambda s: slept.append(s)
+    _cfg.datetime = FakeDatetime
+    try:
+        # 이미 열려 있으면 자지 않고 즉시 반환한다
+        ticks["n"] = 0; slept.clear()
+        FakeDatetime.seq = [kst(2)]
+        wait_until_window(NIGHT, log=lambda *a: None)
+        check("이미 열려 있으면 즉시 반환", slept == [], str(slept))
+
+        # 닫혀 있으면 열릴 때까지 잔다
+        ticks["n"] = 0; slept.clear()
+        FakeDatetime.seq = [kst(22, 58), kst(22, 59), kst(23, 0)]
+        wait_until_window(NIGHT, log=lambda *a: None)
+        check("닫혀 있으면 열릴 때까지 대기", len(slept) == 2, str(slept))
+        check("poll_sec을 넘겨 자지 않음", all(x <= 60 for x in slept), str(slept))
+
+        # 열려 있어도 남은 시간이 모자라면 다음 회차를 노린다
+        ticks["n"] = 0; slept.clear()
+        FakeDatetime.seq = [kst(16, 16), kst(16, 17)] + [kst(10, 0, day=26)]
+        wait_until_window(US, min_remaining_sec=2 * 3600, log=lambda *a: None)
+        check("남은 시간 부족하면 다음 회차까지 대기", len(slept) == 2, str(slept))
+    finally:
+        _cfg.time.sleep = real_sleep
+        _cfg.datetime = real_dt
+
     print("\n지출 가드")
     profiles = measure_token_profiles(log_path)
     check("실측 토큰 프로파일 3모델", len(profiles) == 3, str(sorted(profiles)))
