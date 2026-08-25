@@ -51,7 +51,7 @@ def check_window(models, force: bool) -> None:
     """지금이 각 모델의 저부하 시간인지 확인한다.
 
     노이즈 바닥선을 그 모델의 피크 시간에 재면 바닥선 자체가 부하를 먹은
-    값이 된다. 본실험에서 대비가 줄어 검정력을 깎으므로, 창을 벗어났으면
+    값이 된다. 본실험에서 대비가 줄어 검정력을 깎으므로, 시간대를 벗어났으면
     막는다. 9개 모델이 동시에 한가한 시각은 없으므로 지역별로 나눠 돌린다.
     """
     hour = datetime.now(KST).hour
@@ -64,10 +64,10 @@ def check_window(models, force: bool) -> None:
     if not off:
         return
 
-    print(f"\n현재 시각 KST {hour:02d}시 — 저부하 창을 벗어난 모델이 있다.\n")
+    print(f"\n현재 시각 KST {hour:02d}시 — 저부하 시간대를 벗어난 모델이 있다.\n")
     for region, (window, keys) in sorted(off.items()):
         label = REGION_LABELS.get(region, region)
-        print(f"  {label}({region}) 창 KST {window[0]:02d}~{window[1]:02d}시 — {', '.join(keys)}")
+        print(f"  {label}({region}) 시간대 KST {window[0]:02d}~{window[1]:02d}시 — {', '.join(keys)}")
     print("\n지역별로 나눠 돌리는 편이 낫다. 예시:")
     for region, window in CALIBRATION_WINDOWS_KST.items():
         label = REGION_LABELS.get(region, region)
@@ -148,7 +148,7 @@ def main() -> None:
     ap.add_argument("--region", choices=["us", "cn", "kr"], default=None,
                     help="지역별로 나눠 돌린다. 보정 패스는 지역마다 저부하 시각이 다르다")
     ap.add_argument("--force", action="store_true",
-                    help="저부하 창을 벗어나도 강행한다")
+                    help="저부하 시간대를 벗어나도 강행한다")
     ap.add_argument("--no-anchors", action="store_true", help="flagship 앵커 제외")
     ap.add_argument("--k", type=int, default=CONSISTENCY_K, help="일관성 샘플 반복 수")
     ap.add_argument("--anchor-k", type=int, default=1,
