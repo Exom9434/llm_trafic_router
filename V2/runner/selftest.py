@@ -240,6 +240,33 @@ if __name__ == "__main__":
           all(r.get("reasoning_tokens") == 12 for r in rec_with_reasoning))
 
     # 5. 지출 가드 ────────────────────────────────────────
+    print("\n끝에 글자만 남긴 응답 파싱")
+
+    V = list("ABCDEFGHIJ")
+    trail_cases = [
+        # (출력, 기대, 잘림)
+        ("F = q(E + vxB) = 0, so E = -vxB ... E = 2ix - 2iy + iz  D", "D", False),
+        ("The integral evaluates to pi*123 = 386.4158898 B", "B", False),
+        ("...therefore the field is 3.0e3 N/C A", "A", False),
+        ("(D)", "D", False),
+        ("Answer: G", "G", False),
+        ("<Answer>E</Answer>", "E", False),
+        # 끊긴 응답의 마지막 글자는 답이 아니다
+        ("I need to find the diameter of a steel rod under combined loads. Given: P", None, True),
+        # 본문 한가운데 대문자는 줍지 않는다
+        ("blah blah C blah blah", None, False),
+        ("I cannot answer", None, False),
+        ("Let me compute. The result is 42", None, False),
+    ]
+    bad = [(t[:30], want, prompts.parse_letter(t, V, truncated=cut))
+           for t, want, cut in trail_cases
+           if prompts.parse_letter(t, V, truncated=cut) != want]
+    check(f"끝글자 규칙 {len(trail_cases)}종", not bad, f"틀린 케이스 {bad}" if bad else "")
+    check("잘린 응답에는 끝글자 규칙을 쓰지 않는다",
+          prompts.parse_letter("... the answer should be D", V, truncated=True) is None)
+    check("안 잘렸으면 같은 문자열에서 답을 읽는다",
+          prompts.parse_letter("... the answer should be D", V, truncated=False) == "D")
+
     print("\n저부하 시간대 대기")
 
     US, NIGHT = (10, 17), (23, 7)

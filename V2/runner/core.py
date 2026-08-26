@@ -86,7 +86,11 @@ def execute_call(cs: CallSpec, adapter, run_id: str, vantage: str = "") -> CallR
     ).stamp()
 
     if raw.error is None:
-        letter = prompts.parse_letter(raw.text, valid)
+        # 출력이 상한에 닿았으면 응답이 끊긴 것이다. 끊긴 자리의 마지막
+        # 글자를 답으로 주워 오면 조용한 오답이 되므로 파서에 알린다.
+        cut = (raw.output_tokens is not None and cs.max_tokens
+               and raw.output_tokens >= cs.max_tokens - 2)
+        letter = prompts.parse_letter(raw.text, valid, truncated=bool(cut))
         rec.parsed_letter = letter
         rec.correct = None if letter is None else int(letter == cs.item["answer"])
         rec.answer_logprob = raw.first_token_logprob

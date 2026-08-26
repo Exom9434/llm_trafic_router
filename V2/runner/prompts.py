@@ -72,12 +72,22 @@ _ANSWER_PHRASE = re.compile(
 # "I cannot answer"의 I를 선택지 I로 오독하는 사고가 여기서 난다.
 _OPTION_MARKERS = ".):],-*"
 
+# 모델이 지시를 어기고 풀이를 쓴 뒤 마지막에 글자만 툭 놓는 꼴.
+# 2026-08-26 probe에서 sonnet-5가 "... E = 2ix - 2iy + iz  D"로 끝냈다.
+# 답이 분명히 거기 있는데 위 규칙들이 전부 놓쳤다. 끝에서만, 앞뒤가
+# 글자·숫자가 아닐 때만 인정한다 — 본문 중간의 대문자를 주워 오면
+# 조용한 오답이 되므로 위치를 끝으로 못박는다.
+_TRAILING_LETTER = re.compile(r"(?:^|[^A-Za-z0-9])\(?([A-J])\)?[.\s]*$")
 
-def parse_letter(text: str | None, valid: list[str]) -> str | None:
+
+def parse_letter(text: str | None, valid: list[str], truncated: bool = False) -> str | None:
     """모델 출력에서 선택지 글자를 뽑는다. 못 뽑으면 None(파싱 실패).
 
     애매하면 추측하지 않고 None을 준다. 잘못 뽑은 답은 조용히 정확도를
     오염시키지만, 파싱 실패는 로그에 남아 집계된다.
+
+    `truncated`는 출력이 상한에 닿아 끊겼는지다. 끊긴 응답에서는 마지막
+    글자 규칙을 쓰지 않는다 — 끊긴 자리의 글자는 답이 아니다.
     """
     if not text:
         return None
@@ -102,6 +112,13 @@ def parse_letter(text: str | None, valid: list[str]) -> str | None:
     m = _ANSWER_PHRASE.search(stripped)
     if m and m.group(1).upper() in valid:
         return m.group(1).upper()
+
+    # 풀이를 늘어놓고 맨 끝에 글자만 남긴 경우. 잘리지 않은 응답에만 쓴다 —
+    # 잘린 응답의 마지막 글자는 답이 아니라 문장이 끊긴 자리일 뿐이다.
+    if not truncated:
+        m = _TRAILING_LETTER.search(stripped)
+        if m and m.group(1).upper() in valid:
+            return m.group(1).upper()
 
     return None
 
