@@ -140,7 +140,7 @@ LINEUP: list[ModelSpec] = [
         supports_logprobs="no",
         price_in=0.20, price_out=1.20,
         max_tokens_param="max_completion_tokens",
-        direct_max_tokens=16,
+        direct_max_tokens=64,    # probe 실측 p100 기준, 절단 0%
         extra_body={"reasoning_effort": "none"},
         pinned=False,
         notes=(
@@ -163,7 +163,7 @@ LINEUP: list[ModelSpec] = [
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         supports_logprobs="no",
         price_in=0.30, price_out=2.50,
-        direct_max_tokens=24,
+        direct_max_tokens=64,    # probe 실측 p100 기준, 절단 0%
         extra_body={"reasoning_effort": "minimal"},
         pinned=False,
         notes=(
@@ -175,7 +175,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="deepseek_v4_flash",
-        measured_output_tokens=72,
+        measured_output_tokens=2689,
         region="cn",
         provider="deepseek",
         model="deepseek-v4-flash",
@@ -184,7 +184,7 @@ LINEUP: list[ModelSpec] = [
         base_url="https://api.deepseek.com/v1",
         supports_logprobs="no",             # 2026-08-24 실측: 문서와 달리 반환하지 않는다
         price_in=0.44, price_out=1.32,      # 피크 단가. 오프피크는 정확히 반값.
-        direct_max_tokens=128,              # 실측: 추론에 53~56토큰을 쓴다. 여유를 둔다
+        direct_max_tokens=16384,    # probe 실측 p100 기준, 절단 0%
         pinned=False,
         notes=(
             "구 deepseek-chat은 2026-07-24 서비스 종료. v4-flash가 후계다. "
@@ -199,7 +199,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="qwen_flash",
-        measured_output_tokens=457,
+        measured_output_tokens=2040,
         region="cn",
         provider="qwen",
         model="qwen3.7-flash-2026-07-15",
@@ -208,7 +208,7 @@ LINEUP: list[ModelSpec] = [
         base_url="https://dashscope-us.aliyuncs.com/compatible-mode/v1",
         supports_logprobs="unknown",        # 2026-08-24 실측: logprobs 요청이 거절된다. 사유 확인 필요
         price_in=0.03, price_out=0.13,
-        direct_max_tokens=768,              # 실측: 추론에 477토큰을 쓴다
+        direct_max_tokens=8192,    # probe 실측 p100 기준, 절단 0%
         extra_body={"enable_thinking": True},
         pinned=True,
         notes=(
@@ -223,7 +223,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="upstage_solar_pro3",
-        measured_output_tokens=3,
+        measured_output_tokens=185,
         region="kr",
         provider="upstage",
         model="solar-pro3",
@@ -232,7 +232,7 @@ LINEUP: list[ModelSpec] = [
         base_url="https://api.upstage.ai/v1",
         supports_logprobs="no",
         price_in=0.15, price_out=0.60,
-        direct_max_tokens=16,
+        direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
         notes=(
             "solar-pro4에서 되돌렸고 실측으로 확정했다. pro4는 출력 상한 512토큰을 "
             "추론으로 전부 소진하고도 답을 내지 못했다(추론 512 = 출력 512). "
@@ -242,7 +242,8 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="anthropic_haiku",
-        measured_output_tokens=4,
+        measured_output_tokens=131,
+        direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
         provider="anthropic",
         model="claude-haiku-4-5-20251001",
         adapter="anthropic",
@@ -259,6 +260,7 @@ LINEUP: list[ModelSpec] = [
     ModelSpec(
         key="naver_hcx_dash",
         measured_output_tokens=2,
+        direct_max_tokens=64,    # probe 실측 p100 기준, 절단 0%
         region="kr",
         provider="naver",
         model="HCX-DASH-002",
@@ -295,13 +297,14 @@ ANCHORS: list[ModelSpec] = [
         supports_logprobs="no",
         price_in=5.00, price_out=30.00,
         max_tokens_param="max_completion_tokens",
-        direct_max_tokens=16,
+        direct_max_tokens=64,    # probe 실측 p100 기준, 절단 0%
         extra_body={"reasoning_effort": "none"},
         notes="티어 대조군 A. GA 2026-07-09. 중간 티어 gpt-5.6-terra($2/$12)도 대안.",
     ),
     ModelSpec(
         key="anthropic_sonnet5",
-        measured_output_tokens=3,
+        measured_output_tokens=26,
+        direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
         provider="anthropic",
         model="claude-sonnet-5",
         adapter="anthropic",
