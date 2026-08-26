@@ -36,6 +36,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="보정 패스 오류 분류")
     ap.add_argument("--log", default=None)
     ap.add_argument("--samples", type=int, default=2, help="오류 유형당 원문 예시 수")
+    ap.add_argument("--blank-samples", type=int, default=0, metavar="N",
+                    help="답을 못 읽은 콜의 raw_text를 N건 보여 준다. "
+                         "잘림인지 모델이 딴소리를 한 것인지 여기서 갈린다")
     args = ap.parse_args()
 
     path = Path(args.log) if args.log else DEFAULT_LOG
@@ -52,6 +55,7 @@ def main() -> None:
     out_max = collections.defaultdict(int)
     http_codes = collections.defaultdict(collections.Counter)
     fail_items = collections.defaultdict(collections.Counter)
+    blank_samples = collections.defaultdict(list)
 
     with path.open(encoding="utf-8") as fh:
         for line in fh:
@@ -84,8 +88,14 @@ def main() -> None:
                     fail_items[key][r["item_id"]] += 1
                 # 출력 상한을 다 쓰고 답이 안 나왔으면 추론이 자리를 먹은 것이다
                 cap = r.get("max_tokens") or 0
-                if out is not None and cap and out >= cap - 2:
+                hit = out is not None and cap and out >= cap - 2
+                if hit:
                     truncated[key] += 1
+                if len(blank_samples[key]) < args.blank_samples:
+                    raw = (r.get("raw_text") or "")
+                    raw = " ".join(raw.split())
+                    blank_samples[key].append(
+                        (out, cap, "잘림" if hit else "미잘림", raw))
 
     print(f"로그: {path}  ({total:,}행)\n")
 
@@ -115,6 +125,19 @@ def main() -> None:
                 print(f"  {n:6,}건  {kind}")
                 for s in err_samples[kind][:1]:
                     print(f"          예: {s}")
+
+    if args.blank_samples and blank_samples:
+        print("\n" + "=" * 72)
+        print("답을 못 읽은 콜의 실제 출력")
+        print("=" * 72)
+        print("'미잘림'인데 raw_text가 비어 있으면 모델이 아무것도 안 뱉은 것이고,")
+        print("길게 차 있으면 한 글자만 답하라는 지시를 무시한 것이다. 고칠 곳이 다르다.\n")
+        for key in sorted(blank_samples):
+            print(f"[{key}]")
+            for out, cap, mark, raw in blank_samples[key]:
+                body = raw[:200] if raw else "(빈 문자열)"
+                print(f"  출력 {out}/{cap} {mark}  {body}")
+            print()
 
     # 실패가 특정 문항에 몰렸는가 — 무작위면 대부분 1회씩 흩어진다
     print("\n" + "=" * 72)
