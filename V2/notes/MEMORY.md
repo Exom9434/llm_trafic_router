@@ -1,0 +1,6 @@
+- [llm-router-redesign](llm-router-redesign.md) — "quality-under-load" thesis, 2026-08 lineup overhaul (logprob→reasoning-token pivot), V2/runner status, git state
+- [llm-router-output-caps](llm-router-output-caps.md) — 1차 보정 패스 폐기 경위(출력 상한 소진 17%), 모델별 실측 분포, 파서 수정, 예산 $88→$344
+- [llm-router-prereg](llm-router-prereg.md) — 사전등록 아직 안 됨. git 이력이 유일한 증거, 등록 시점(재보정 뒤·본실험 전)과 담을 내용
+- [llm-router-power-cost](llm-router-power-cost.md) — 검정력·비용 재산정, 지표별 필요 문항(추론량 10~31 · 자기일관성 133 · 정확도 232)
+- [llm-router-budget-guard](llm-router-budget-guard.md) — API 키 분리·지출 상한 정책, 하루 단위 지출 가드와 "완주한 날만 분석" 배제 규칙
+- [llm-router-scheduling](llm-router-scheduling.md) — 소요 기간(달력 16~18일), 지역별 보정 패스 분할, --wait 자동 대기, 위약 대조군 논리
