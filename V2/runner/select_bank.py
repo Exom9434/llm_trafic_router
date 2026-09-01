@@ -6,7 +6,11 @@
     "고부하 때 자기 바닥선 아래로 떨어졌는가"를 검정할 기준선이 된다.
 
 실행:
-    python select_bank.py --lo 0.40 --hi 0.85 --per-subject 60
+    python select_bank.py --lo 0.35 --hi 0.90 --per-subject 50
+
+밴드 기본값은 2026-09-01에 0.40~0.85에서 넓혔다. 좁은 밴드로는 history 43개,
+psychology 37개밖에 통과하지 못해 과목당 50문항을 채울 수 없었다. 넓힌 이유가
+문항 난이도 분포이지 결과 지표가 아니라는 점을 사전등록에 적는다.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from calllog import read_records
-from config import DATA_DIR, OUTPUT_DIR
+from config import ALL_MODELS, DATA_DIR, OUTPUT_DIR
 from itembank import SUBJECTS, load_pool
 
 DEFAULT_LOG = OUTPUT_DIR / "calibration_calls.jsonl"
@@ -164,17 +168,32 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="문항 은행 선별 + 노이즈 바닥선 산출")
     ap.add_argument("--log", default=None)
     ap.add_argument("--pool", default=None)
-    ap.add_argument("--lo", type=float, default=0.40)
-    ap.add_argument("--hi", type=float, default=0.85)
-    ap.add_argument("--per-subject", type=int, default=60)
+    ap.add_argument("--lo", type=float, default=0.35)
+    ap.add_argument("--hi", type=float, default=0.90)
+    ap.add_argument("--per-subject", type=int, default=50)
     ap.add_argument("--max-error", type=float, default=0.10)
     ap.add_argument("--max-parse-fail", type=float, default=0.10)
+    ap.add_argument("--models", nargs="*", default=None,
+                    help="집계에 넣을 모델. 기본값은 현재 라인업+앵커다.")
     args = ap.parse_args()
 
     log_path = Path(args.log) if args.log else DEFAULT_LOG
     records = read_records(log_path)
     if not records:
         raise SystemExit(f"보정 로그가 비었다: {log_path}")
+
+    # 라인업에서 내린 모델의 기록이 로그에 남아 있다. 그대로 집계하면 두 군데가
+    # 틀어진다. 문항 난이도는 이제 돌지 않을 모델의 정답률까지 평균에 넣게 되고,
+    # parse_fail_rate는 그 모델의 파싱 실패까지 세어 멀쩡한 문항을 떨어뜨린다.
+    allowed = set(args.models) if args.models else {m.key for m in ALL_MODELS}
+    before = len(records)
+    records = [r for r in records if r.get("model_key") in allowed]
+    dropped = sorted({r["model_key"] for r in read_records(log_path)
+                      if r.get("model_key") and r["model_key"] not in allowed})
+    if dropped:
+        print(f"집계 제외 모델: {', '.join(dropped)} ({before - len(records):,}행)")
+    if not records:
+        raise SystemExit("집계할 기록이 없다. --models를 확인할 것.")
 
     pool = load_pool(Path(args.pool) if args.pool else None)
     pool_by_id = {i["item_id"]: i for i in pool}
