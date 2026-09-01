@@ -267,6 +267,26 @@ if __name__ == "__main__":
     check("안 잘렸으면 같은 문자열에서 답을 읽는다",
           prompts.parse_letter("... the answer should be D", V, truncated=False) == "D")
 
+    # 답을 명시한 꼴이 여러 번 나오는 경우 (2026-09-01)
+    print("\n답 명시 꼴이 여러 번 나올 때")
+    phrase_cases = [
+        # 검토 과정의 언급이 앞에 깔리고 결론이 뒤에 온다. 첫 매치를 쓰면 안 된다.
+        ("Option A says the field is zero. Option C is closer. The answer is E.", "E", False),
+        # answer가 없으면 마지막 매치를 쓴다.
+        ("Let me check option B, then option F.", "F", False),
+        # answer 매치가 뒤쪽 option 언급보다 우선한다.
+        ("The answer is G, which is unlike option J.", "G", False),
+        # 끊긴 응답의 중간 언급은 최종 답이 아니다.
+        ("I will check option A first, then the answer is B and", None, True),
+        # 첫머리에 답이 온 응답은 끊겨도 읽는다.
+        ("C. Now let me verify this by computing the", "C", True),
+        ("<Answer>H</Answer> then rambles on and on", "H", True),
+    ]
+    bad = [(t[:34], want, prompts.parse_letter(t, V, truncated=cut))
+           for t, want, cut in phrase_cases
+           if prompts.parse_letter(t, V, truncated=cut) != want]
+    check(f"답 명시 꼴 선택 {len(phrase_cases)}종", not bad, f"틀린 케이스 {bad}" if bad else "")
+
     print("\n저부하 시간대 대기")
 
     US, NIGHT = (10, 17), (23, 7)

@@ -63,9 +63,10 @@ def build_messages(item: dict, mode: str, nonce: str | None = None) -> list[dict
 
 _ANSWER_TAG = re.compile(r"<Answer>\s*([A-J])\s*</Answer>", re.IGNORECASE)
 _PAREN_LETTER = re.compile(r"^\(?\s*([A-J])\s*\)")
-# "answer is C", "Answer: D", "correct option — B" 처럼 답을 명시한 꼴만 인정한다.
+# "answer is C", "Answer: D", "correct option - B" 처럼 답을 명시한 꼴만 인정한다.
 _ANSWER_PHRASE = re.compile(
-    r"\b(?:answer|option|choice)\b[^A-Za-z0-9]{0,12}(?:is|:|=)?[^A-Za-z0-9]{0,6}([A-J])\b",
+    r"\b(?P<kw>answer|option|choice)\b[^A-Za-z0-9]{0,12}(?:is|:|=)?"
+    r"[^A-Za-z0-9]{0,6}(?P<letter>[A-J])\b",
     re.IGNORECASE,
 )
 # 답 글자 뒤에 올 수 있는 구분자. 공백은 뺀다 —
@@ -80,14 +81,38 @@ _OPTION_MARKERS = ".):],-*"
 _TRAILING_LETTER = re.compile(r"(?:^|[^A-Za-z0-9])\(?([A-J])\)?[.\s]*$")
 
 
+def _phrase_letter(stripped: str, valid: list[str]) -> str | None:
+    """답을 명시한 꼴이 여러 번 나오면 어느 것을 고를 것인가.
+
+    첫 매치를 쓰면 안 된다. 모델이 풀이를 늘어놓으면 "option A says...",
+    "unlike option C..." 처럼 검토 과정의 언급이 앞에 깔리고, 결론은 맨 뒤에
+    온다. 2026-08-26 보정 로그에서 앞뒤 매치가 갈린 80콜의 정답률이 첫 매치
+    0.138, 마지막 매치 0.575였다. 첫 매치는 10지선다 우연 수준(0.100)에
+    가깝다. 즉 첫 매치 규칙은 답을 읽은 것이 아니라 잡음을 읽고 있었다.
+
+    "answer"는 "option"·"choice"보다 강한 확정어다. 검토 중에는 option을
+    쓰고 결론에서 answer를 쓰는 경향이 있어, answer 매치가 있으면 그중
+    마지막을 먼저 본다. 같은 80콜에서 0.637로 마지막 매치보다 낫다.
+    """
+    hits = [(m.group("kw").lower(), m.group("letter").upper())
+            for m in _ANSWER_PHRASE.finditer(stripped)]
+    hits = [(kw, L) for kw, L in hits if L in valid]
+    if not hits:
+        return None
+    answers = [L for kw, L in hits if kw == "answer"]
+    return answers[-1] if answers else hits[-1][1]
+
+
 def parse_letter(text: str | None, valid: list[str], truncated: bool = False) -> str | None:
     """모델 출력에서 선택지 글자를 뽑는다. 못 뽑으면 None(파싱 실패).
 
     애매하면 추측하지 않고 None을 준다. 잘못 뽑은 답은 조용히 정확도를
     오염시키지만, 파싱 실패는 로그에 남아 집계된다.
 
-    `truncated`는 출력이 상한에 닿아 끊겼는지다. 끊긴 응답에서는 마지막
-    글자 규칙을 쓰지 않는다 — 끊긴 자리의 글자는 답이 아니다.
+    `truncated`는 출력이 상한에 닿아 끊겼는지다. 끊긴 응답에서는 본문 중간을
+    뒤지는 규칙(끝글자, 답 명시 꼴)을 쓰지 않는다. 결론에 도달하지 못한
+    응답에서 중간 언급을 최종 답으로 세면 조용한 오답이 된다. 응답 첫머리에
+    답이 오는 규칙(태그, 괄호, 맨앞 글자)은 끊김과 무관하므로 그대로 쓴다.
     """
     if not text:
         return None
@@ -109,16 +134,20 @@ def parse_letter(text: str | None, valid: list[str], truncated: bool = False) ->
         if first in valid and (len(head) == 1 or head[1] in _OPTION_MARKERS):
             return first
 
-    m = _ANSWER_PHRASE.search(stripped)
+    # 아래 두 규칙은 본문 중간·끝을 뒤진다. 끊긴 응답에는 결론이 없으므로
+    # 쓰지 않는다. 2026-09-01 확인: 끊긴 응답에서 답 명시 꼴로 읽은 401콜의
+    # 정답률이 0.21~0.40으로 우연 수준에 가까웠다.
+    if truncated:
+        return None
+
+    letter = _phrase_letter(stripped, valid)
+    if letter:
+        return letter
+
+    # 풀이를 늘어놓고 맨 끝에 글자만 남긴 경우.
+    m = _TRAILING_LETTER.search(stripped)
     if m and m.group(1).upper() in valid:
         return m.group(1).upper()
-
-    # 풀이를 늘어놓고 맨 끝에 글자만 남긴 경우. 잘리지 않은 응답에만 쓴다 —
-    # 잘린 응답의 마지막 글자는 답이 아니라 문장이 끊긴 자리일 뿐이다.
-    if not truncated:
-        m = _TRAILING_LETTER.search(stripped)
-        if m and m.group(1).upper() in valid:
-            return m.group(1).upper()
 
     return None
 
