@@ -101,6 +101,11 @@ class ModelSpec:
     price_in: float = 0.0        # USD / 1M input tokens
     price_out: float = 0.0       # USD / 1M output tokens
     max_concurrency: int = 4
+    # 분당 요청 상한. None이면 제한하지 않는다.
+    # 2026-08-26 보정에서 네이버가 46분 내내 정확히 분당 90건만 통과시키고
+    # 초과분 6건을 매분 429로 잘랐다. 러너가 분당 96콜을 밀어넣고 있었다.
+    # 재시도로 회수되긴 하나 로그에 오류가 쌓이고 시간이 늘어난다.
+    max_rpm: int | None = None
 
     # 출력 상한 파라미터 이름. reasoning 모델은 max_tokens를 안 받는다.
     max_tokens_param: str = "max_tokens"
@@ -222,25 +227,6 @@ LINEUP: list[ModelSpec] = [
         ),
     ),
     ModelSpec(
-        key="upstage_solar_pro3",
-        measured_output_tokens=185,
-        region="kr",
-        provider="upstage",
-        model="solar-pro3",
-        adapter="openai_compat",
-        api_key_env="UPSTAGE_API_KEY",
-        base_url="https://api.upstage.ai/v1",
-        supports_logprobs="no",
-        price_in=0.15, price_out=0.60,
-        direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
-        notes=(
-            "solar-pro4에서 되돌렸고 실측으로 확정했다. pro4는 출력 상한 512토큰을 "
-            "추론으로 전부 소진하고도 답을 내지 못했다(추론 512 = 출력 512). "
-            "pro3는 출력 3토큰·추론 0으로 정답을 내며 콜당 비용이 pro4의 1/21이다. "
-            "추론 토큰 필드는 있으나 값이 0이다. 켜는 파라미터를 찾으면 측정 대상이 될 수 있다."
-        ),
-    ),
-    ModelSpec(
         key="anthropic_haiku",
         measured_output_tokens=131,
         direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
@@ -273,6 +259,7 @@ LINEUP: list[ModelSpec] = [
         price_in=250.0 / KRW_PER_USD,
         price_out=1000.0 / KRW_PER_USD,
         max_concurrency=2,
+        max_rpm=85,
         pinned=True,
         notes=(
             "여전히 현행 최신 경량 모델. DASH-003은 없다. "
@@ -321,6 +308,36 @@ ANCHORS: list[ModelSpec] = [
             "adaptive thinking이 기본 ON이라 disabled를 명시해야 한다. "
             "2026-08-24 실측: temperature를 보내면 400을 낸다"
             "(\'temperature is deprecated for this model\'). 라인업에서 유일하다."
+        ),
+    ),
+]
+
+# 라인업에서 내린 모델. 스펙과 사유를 남겨 둔다 — 왜 빠졌는지가
+# 논문에 들어가고, 되살릴 때 처음부터 다시 조사하지 않기 위해서다.
+# 여기 있는 모델은 어떤 실행에도 포함되지 않는다.
+RETIRED: list[ModelSpec] = [
+    ModelSpec(
+        key="upstage_solar_pro3",
+        measured_output_tokens=185,
+        region="kr",
+        provider="upstage",
+        model="solar-pro3",
+        adapter="openai_compat",
+        api_key_env="UPSTAGE_API_KEY",
+        base_url="https://api.upstage.ai/v1",
+        supports_logprobs="no",
+        price_in=0.15, price_out=0.60,
+        direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
+        notes=(
+            "solar-pro4에서 되돌렸고 실측으로 확정했다. pro4는 출력 상한 512토큰을 "
+            "추론으로 전부 소진하고도 답을 내지 못했다(추론 512 = 출력 512). "
+            "pro3는 출력 3토큰·추론 0으로 정답을 내며 콜당 비용이 pro4의 1/21이다. "
+            "추론 토큰 필드는 있으나 값이 0이다. 켜는 파라미터를 찾으면 측정 대상이 될 수 있다. "
+            "2026-09-01 라인업에서 제외. 어려운 문항에서 생성을 종료하지 못한다. "
+            "상한 8,192로 재보니 절단 문항 48개 중 40%가 천장에 박혔고 5,900~8,192 구간이 "
+            "비어 있어 꼬리가 닫히지 않는다. raw_text는 발산하는 반복이거나 4만 자를 쓰고도 "
+            "결론을 되풀이하는 루프다. 상한을 올려도 해결되지 않으며, 결측이 "
+            "engineering·physics·math·law에 몰려 무작위가 아니다."
         ),
     ),
 ]

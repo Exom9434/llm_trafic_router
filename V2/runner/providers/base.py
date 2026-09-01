@@ -12,6 +12,7 @@ SDK 대신 requests로 직접 친다. 상태코드·레이트리밋 헤더·requ
 from __future__ import annotations
 
 import random
+import threading
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
@@ -73,6 +74,30 @@ class BaseAdapter:
     def __init__(self, spec):
         self.spec = spec
         self.session = requests.Session()
+        # 모델 하나당 어댑터 하나를 그 모델의 스레드 풀이 공유하므로,
+        # 여기서 간격을 지키면 그 모델의 전체 발사 속도가 잡힌다.
+        self._rate_lock = threading.Lock()
+        self._next_send_at = 0.0
+
+    def _wait_for_slot(self) -> None:
+        """분당 요청 상한을 지킨다. 상한이 없으면 그냥 통과한다.
+
+        재시도도 요청이므로 매 시도마다 부른다. 429를 맞고 백오프로
+        회수하는 것보다 애초에 안 맞는 편이 낫다. 로그에 오류가 쌓이지
+        않고, 실패한 콜이 재개 대상으로 남지도 않는다.
+        """
+        rpm = getattr(self.spec, "max_rpm", None)
+        if not rpm:
+            return
+        gap = 60.0 / rpm
+        while True:
+            with self._rate_lock:
+                now = time.monotonic()
+                if now >= self._next_send_at:
+                    self._next_send_at = now + gap
+                    return
+                sleep = self._next_send_at - now
+            time.sleep(sleep)
 
     # 하위 클래스가 구현한다 ────────────────────────────────
     def _endpoint(self) -> str:
@@ -102,6 +127,7 @@ class BaseAdapter:
         status = None
 
         for attempt in range(MAX_RETRIES):
+            self._wait_for_slot()
             t0 = time.perf_counter()
             try:
                 resp = self.session.post(

@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import random
 import sys
+import time
 from datetime import datetime
 import tempfile
 import uuid
@@ -22,6 +23,7 @@ import prompts
 from budget import DayLedger, SpendGuard, measure_token_profiles, project
 from calllog import JsonlLogger, load_done_keys, read_records
 from config import (
+    ALL_MODELS,
     KST,
     ModelSpec,
     in_window,
@@ -286,6 +288,32 @@ if __name__ == "__main__":
            for t, want, cut in phrase_cases
            if prompts.parse_letter(t, V, truncated=cut) != want]
     check(f"답 명시 꼴 선택 {len(phrase_cases)}종", not bad, f"틀린 케이스 {bad}" if bad else "")
+
+    # 분당 요청 상한 ─────────────────────────────────────
+    print("\n분당 요청 상한")
+
+    import threading as _th
+    from types import SimpleNamespace as _NS
+    from providers.base import BaseAdapter as _BA
+
+    def _burst(rpm, calls, workers):
+        ad = _BA(_NS(max_rpm=rpm))
+        per = calls // workers
+        t0 = time.monotonic()
+        ths = [_th.Thread(target=lambda: [ad._wait_for_slot() for _ in range(per)])
+               for _ in range(workers)]
+        for t in ths:
+            t.start()
+        for t in ths:
+            t.join()
+        return time.monotonic() - t0
+
+    el = _burst(1200, 20, 2)          # 간격 0.05초 x 19 = 0.95초
+    check("상한이 있으면 간격을 지킨다", 0.85 <= el <= 1.35, f"{el:.2f}초 (기대 0.95초)")
+    el = _burst(None, 200, 4)
+    check("상한이 없으면 기다리지 않는다", el < 0.1, f"{el:.3f}초")
+    check("네이버에 상한이 걸려 있다",
+          next(m.max_rpm for m in ALL_MODELS if m.key == "naver_hcx_dash") == 85)
 
     print("\n저부하 시간대 대기")
 
