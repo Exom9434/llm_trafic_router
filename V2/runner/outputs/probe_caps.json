@@ -1,0 +1,11 @@
+{
+  "openai_gpt56_luna": 32,
+  "google_gemini_flash_lite": 32,
+  "deepseek_v4_flash": 32768,
+  "qwen_flash": 16384,
+  "upstage_solar_pro3": 16384,
+  "anthropic_haiku": 1024,
+  "naver_hcx_dash": 32,
+  "openai_gpt56_sol": 32,
+  "anthropic_sonnet5": 1024
+}

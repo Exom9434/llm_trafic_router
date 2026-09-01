@@ -47,6 +47,10 @@ def main() -> None:
     ap.add_argument("--pool", default=None)
     ap.add_argument("--log", default=None)
     ap.add_argument("--report-only", action="store_true", help="콜 없이 기존 로그만 집계")
+    ap.add_argument("--cap", type=int, default=None,
+                    help="모든 모델에 이 상한을 강제한다. GENEROUS 표를 무시한다.")
+    ap.add_argument("--items-file", default=None,
+                    help="문항 id 목록 JSON. 주면 --items 대신 이 문항들만 돌린다.")
     args = ap.parse_args()
 
     log_path = Path(args.log) if args.log else PROBE_LOG
@@ -56,21 +60,35 @@ def main() -> None:
 
     if not args.report_only:
         pool = load_pool(Path(args.pool) if args.pool else None)
+        if args.items_file:
+            # 특정 문항만 겨냥한다. 상한 소진이 몰린 문항의 꼬리를 재려면
+            # 풀에서 고루 뽑으면 안 된다. 대부분이 세 토큰으로 끝나 분포가 안 보인다.
+            wanted = json.loads(Path(args.items_file).read_text(encoding="utf-8"))
+            index = {it["item_id"]: it for it in pool}
+            picked = [index[i] for i in wanted if i in index]
+            missing = [i for i in wanted if i not in index]
+            if missing:
+                print(f"풀에 없는 문항 {len(missing)}개는 건너뛴다: {missing[:5]}")
+            if not picked:
+                sys.exit("겨냥할 문항이 하나도 없다.")
+        else:
+            picked = None
         # 실패가 math에 몰렸으므로 과목을 고루 섞는다.
         by_subject = {}
         for it in pool:
             by_subject.setdefault(it.get("subject") or "?", []).append(it)
-        subjects = sorted(by_subject)
-        picked, i = [], 0
-        while len(picked) < args.items and any(by_subject.values()):
-            s = subjects[i % len(subjects)]
-            if by_subject[s]:
-                picked.append(by_subject[s].pop(0))
-            i += 1
+        if picked is None:
+            subjects = sorted(by_subject)
+            picked, i = [], 0
+            while len(picked) < args.items and any(by_subject.values()):
+                sj = subjects[i % len(subjects)]
+                if by_subject[sj]:
+                    picked.append(by_subject[sj].pop(0))
+                i += 1
 
         specs = []
         for m in models:
-            cap = GENEROUS.get(m.key, GENEROUS_DEFAULT)
+            cap = args.cap or GENEROUS.get(m.key, GENEROUS_DEFAULT)
             for it in picked:
                 specs.append(CallSpec(model=m, item=it, mode="direct",
                                       temperature=DIRECT_TEMPERATURE,
@@ -120,7 +138,15 @@ def main() -> None:
     print("무응답이 0이 아니면 이 상한으로도 모자란 것이니 --items를 늘려 다시 잴 것.")
     if recommend:
         out = OUTPUT_DIR / "probe_caps.json"
-        out.write_text(json.dumps(recommend, indent=2), encoding="utf-8")
+        # 일부 모델만 다시 잰 경우 나머지 값을 지우면 안 된다.
+        merged = {}
+        if out.exists():
+            try:
+                merged = json.loads(out.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                merged = {}
+        merged.update(recommend)
+        out.write_text(json.dumps(merged, indent=2), encoding="utf-8")
         print(f"\nconfig.py의 direct_max_tokens에 반영할 값 -> {out}")
         for k, v in recommend.items():
             print(f"  {k:28s} direct_max_tokens={v}")
