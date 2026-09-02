@@ -247,7 +247,9 @@ LINEUP: list[ModelSpec] = [
     ModelSpec(
         key="anthropic_haiku",
         measured_output_tokens=139,
-        direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
+        direct_max_tokens=2048,    # 2026-09-02 probe 재측정. 어려운 문항 48개를
+                               # 상한 8,192로 열어 보니 최대가 1,315에서 끝났다.
+                               # 1,024는 그 바로 아래라 0.86%가 잘리고 있었다.
         provider="anthropic",
         model="claude-haiku-4-5-20251001",
         adapter="anthropic",
