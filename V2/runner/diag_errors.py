@@ -53,6 +53,7 @@ def main() -> None:
     parse_fail = collections.Counter()
     truncated = collections.Counter()
     out_max = collections.defaultdict(int)
+    log_cap = collections.defaultdict(int)      # 로그에 실제로 찍힌 출력 상한
     http_codes = collections.defaultdict(collections.Counter)
     fail_items = collections.defaultdict(collections.Counter)
     blank_samples = collections.defaultdict(list)
@@ -82,6 +83,7 @@ def main() -> None:
             out = r.get("output_tokens")
             if out is not None:
                 out_max[key] = max(out_max[key], out)
+            log_cap[key] = max(log_cap[key], r.get("max_tokens") or 0)
             if r.get("parsed_letter") is None:
                 parse_fail[key] += 1
                 if r.get("item_id"):
@@ -104,8 +106,10 @@ def main() -> None:
     print(hdr)
     print("-" * 92)
     for key in sorted(set(ok) | set(errs)):
+        # 라인업에서 내린 모델은 SPECS에 없다. 그 경우 로그에 찍힌 상한을 쓴다.
+        # 0으로 찍히면 상한을 안 걸고 돌린 것처럼 읽힌다.
         spec = SPECS.get(key)
-        cap = spec.direct_max_tokens if spec else 0
+        cap = spec.direct_max_tokens if spec else log_cap[key]
         print(f"{key:28s} {ok[key]:8,} {errs[key]:7,} {parse_fail[key]:9,} "
               f"{truncated[key]:9,} {cap:9,} {out_max[key]:9,}")
 
