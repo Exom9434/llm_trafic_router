@@ -253,6 +253,11 @@ if __name__ == "__main__":
         ("The integral evaluates to pi*123 = 386.4158898 B", "B", False),
         ("...therefore the field is 3.0e3 N/C A", "A", False),
         ("(D)", "D", False),
+        # 마크다운 강조로 감싼 마지막 글자 (2026-09-02)
+        ("For small oscillations the condition gives **A**", "A", False),
+        ("...so the total is 3 lb 15 oz **J**", "J", False),
+        ("...checking the correlations again *B*", "B", False),
+        ("...therefore [C]", "C", False),
         ("Answer: G", "G", False),
         ("<Answer>E</Answer>", "E", False),
         # 끊긴 응답의 마지막 글자는 답이 아니다
