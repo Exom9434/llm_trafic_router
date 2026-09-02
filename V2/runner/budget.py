@@ -37,6 +37,7 @@ from calllog import read_records
 from config import (
     ANCHOR_DESIGN,
     DAY_RESERVE_MARGIN,
+    DATA_DIR,
     MAIN_DESIGN,
     OUTPUT_DIR,
     SPEND_CAP_MULTIPLIER,
@@ -46,6 +47,7 @@ from config import (
 )
 
 CALIBRATION_LOG = OUTPUT_DIR / "calibration_calls.jsonl"
+ITEM_BANK = DATA_DIR / "item_bank.json"
 BUDGET_PLAN = OUTPUT_DIR / "budget_plan.json"
 DAY_STATUS_LOG = OUTPUT_DIR / "day_status.jsonl"
 
@@ -64,18 +66,80 @@ class TokenProfile:
     mean_reasoning: float
     error_rate: float
 
-    def cost_per_call(self, m: ModelSpec) -> float:
-        return (self.mean_input / 1e6 * m.price_in
-                + self.mean_output / 1e6 * m.price_out)
+    def cost_per_call(self, m: ModelSpec, price_factor: float = 1.0) -> float:
+        gross = (self.mean_input / 1e6 * m.price_in
+                 + self.mean_output / 1e6 * m.price_out)
+        return gross * price_factor * m.tax_multiplier
 
 
-def measure_token_profiles(log_path: Path | None = None) -> dict[str, TokenProfile]:
+def is_peak(model: ModelSpec, hour_utc: int) -> bool:
+    return any(start <= hour_utc < end for start, end in model.peak_hours_utc)
+
+
+def schedule_price_factor(model: ModelSpec, slot_hours) -> float:
+    """일정이 피크와 오프피크에 어떻게 걸치는지로 평균 단가 계수를 낸다.
+
+    DeepSeek만 시각에 따라 단가가 갈린다(피크 UTC 01~04, 06~10, 오프피크는
+    반값). 전부 피크로 계산하면 그 모델을 45% 과대평가하고, 그 과대평가가
+    지출 상한과 하루 예약에 그대로 실린다. 상한이 느슨해지는 것보다 하루
+    예약이 과해져 멀쩡한 날을 시작 거부하는 쪽이 실제 위험이다(8.1절).
+
+    슬롯 배치는 피크 경계를 걸치라는 설계가 정한 것이고(3.5절), 여기서는
+    그 배치가 만든 요금을 계산할 뿐이다. 요금이 배치를 정하지 않는다.
+    """
+    if not model.peak_hours_utc or not slot_hours:
+        return 1.0
+    weights = [1.0 if is_peak(model, h) else model.offpeak_multiplier
+               for h in slot_hours]
+    return sum(weights) / len(weights)
+
+
+def call_price_factor(model: ModelSpec, ts_utc: str | None) -> float:
+    """실제 콜 하나의 단가 계수. 누적 지출 계산에 쓴다.
+
+    시각을 모르면 피크로 본다. 모르는 쪽을 비싸게 잡아야 가드가 안전하다.
+    """
+    if not model.peak_hours_utc:
+        return 1.0
+    if not ts_utc:
+        return 1.0
+    try:
+        hour = int(str(ts_utc)[11:13])
+    except (ValueError, IndexError):
+        return 1.0
+    return 1.0 if is_peak(model, hour) else model.offpeak_multiplier
+
+
+def bank_item_ids(path: Path | None = None) -> set[str] | None:
+    """확정된 문항 은행의 id 집합. 아직 없으면 None."""
+    p = path or ITEM_BANK
+    if not p.exists():
+        return None
+    try:
+        items = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    ids = {i.get("item_id") for i in items if i.get("item_id")}
+    return ids or None
+
+
+def measure_token_profiles(log_path: Path | None = None,
+                           restrict_to_bank: bool = True) -> dict[str, TokenProfile]:
     """보정 패스 로그에서 모델별 실측 토큰 프로파일을 뽑는다.
 
     추정이 아니라 실측이라는 점이 핵심이다. 추론 차단이 안 먹었다면
     mean_reasoning이 0이 아니게 나오고, 투영 비용이 그만큼 뛴다.
+
+    은행이 확정돼 있으면 그 문항들만 센다. 본실험이 도는 것은 은행 문항이고
+    후보 풀에는 밴드 밖 문항이 절반 가까이 섞여 있다. 출력량이 난이도에
+    크게 좌우되므로 풀 전체로 재면 은행의 실제 비용과 어긋난다.
     """
     records = read_records(log_path or CALIBRATION_LOG)
+    bank = bank_item_ids() if restrict_to_bank else None
+    if bank:
+        in_bank = [r for r in records if r.get("item_id") in bank]
+        if in_bank:
+            records = in_bank
     buckets: dict[str, list[dict]] = {}
     for rec in records:
         key = rec.get("model_key")
@@ -131,7 +195,8 @@ def project(models: list[ModelSpec], profiles: dict[str, TokenProfile],
             out["unpriced"].append(m.key)
 
         design = design_for(m)
-        per_call = prof.cost_per_call(m)
+        factor = schedule_price_factor(m, design.get("slot_hours"))
+        per_call = prof.cost_per_call(m, factor)
         day_cost = per_call * calls_per_day(design)
         run_cost = per_call * total_calls(design)
         grand += run_cost
@@ -145,6 +210,8 @@ def project(models: list[ModelSpec], profiles: dict[str, TokenProfile],
             "measured_input_tokens": prof.mean_input,
             "measured_output_tokens": prof.mean_output,
             "measured_reasoning_tokens": prof.mean_reasoning,
+            "price_factor": round(factor, 4),
+            "tax_multiplier": m.tax_multiplier,
             "cost_per_call": round(per_call, 8),
             "projected_day_cost": round(day_cost, 4),
             "projected_total": round(run_cost, 2),
@@ -181,20 +248,22 @@ class SpendGuard:
     # ── 누적 ──
     def load_spent(self, log_path: Path, models: list[ModelSpec]) -> None:
         """기존 로그에서 이미 쓴 비용을 복원한다. 재개해도 예산이 이어진다."""
-        price = {m.key: (m.price_in, m.price_out) for m in models}
+        by_key = {m.key: m for m in models}
         for rec in read_records(log_path):
             key = rec.get("model_key")
-            if key not in price:
+            if key not in by_key:
                 continue
-            pin, pout = price[key]
-            self.spent[key] = self.spent.get(key, 0.0) + (
-                (rec.get("input_tokens") or 0) / 1e6 * pin
-                + (rec.get("output_tokens") or 0) / 1e6 * pout
+            m = by_key[key]
+            factor = call_price_factor(m, rec.get("ts_utc")) * m.tax_multiplier
+            self.spent[key] = self.spent.get(key, 0.0) + factor * (
+                (rec.get("input_tokens") or 0) / 1e6 * m.price_in
+                + (rec.get("output_tokens") or 0) / 1e6 * m.price_out
             )
 
     def record(self, rec, model: ModelSpec) -> None:
-        cost = ((rec.input_tokens or 0) / 1e6 * model.price_in
-                + (rec.output_tokens or 0) / 1e6 * model.price_out)
+        factor = call_price_factor(model, getattr(rec, "ts_utc", None)) * model.tax_multiplier
+        cost = factor * ((rec.input_tokens or 0) / 1e6 * model.price_in
+                         + (rec.output_tokens or 0) / 1e6 * model.price_out)
         with self._lock:
             self.spent[model.key] = self.spent.get(model.key, 0.0) + cost
 

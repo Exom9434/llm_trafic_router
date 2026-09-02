@@ -24,7 +24,9 @@ from budget import DayLedger, SpendGuard, measure_token_profiles, project
 from calllog import JsonlLogger, load_done_keys, read_records
 from config import (
     ALL_MODELS,
+    ANCHOR_DESIGN,
     KST,
+    MAIN_DESIGN,
     ModelSpec,
     in_window,
     seconds_left_in_window,
@@ -314,6 +316,34 @@ if __name__ == "__main__":
     check("상한이 없으면 기다리지 않는다", el < 0.1, f"{el:.3f}초")
     check("네이버에 상한이 걸려 있다",
           next(m.max_rpm for m in ALL_MODELS if m.key == "naver_hcx_dash") == 85)
+
+    # 시각별 단가 ─────────────────────────────────────────
+    print("\n시각별 단가와 세금")
+
+    from budget import call_price_factor, is_peak, schedule_price_factor
+
+    _ds = next(m for m in ALL_MODELS if m.key == "deepseek_v4_flash")
+    _hk = next(m for m in ALL_MODELS if m.key == "anthropic_haiku")
+    _hx = next(m for m in ALL_MODELS if m.key == "naver_hcx_dash")
+
+    check("공표 피크 구간 판정",
+          is_peak(_ds, 3) and is_peak(_ds, 9) and not is_peak(_ds, 0) and not is_peak(_ds, 12),
+          f"01-04·06-10 UTC, 슬롯 {MAIN_DESIGN['slot_hours']}")
+    check("라인업 8슬롯 중 3개가 피크 — 계수 0.6875",
+          abs(schedule_price_factor(_ds, MAIN_DESIGN["slot_hours"]) - 0.6875) < 1e-9,
+          f"{schedule_price_factor(_ds, MAIN_DESIGN['slot_hours']):.4f}")
+    check("앵커 4슬롯 중 1개가 피크 — 계수 0.625",
+          abs(schedule_price_factor(_ds, ANCHOR_DESIGN["slot_hours"]) - 0.625) < 1e-9,
+          f"{schedule_price_factor(_ds, ANCHOR_DESIGN['slot_hours']):.4f}")
+    check("이중 요금제가 없는 모델은 계수 1.0",
+          schedule_price_factor(_hk, MAIN_DESIGN["slot_hours"]) == 1.0)
+    check("콜 시각으로 피크·오프피크를 가른다",
+          call_price_factor(_ds, "2026-09-02T02:15:00+00:00") == 1.0
+          and call_price_factor(_ds, "2026-09-02T12:15:00+00:00") == 0.5)
+    check("시각을 모르면 비싼 쪽으로 잡는다",
+          call_price_factor(_ds, None) == 1.0 and call_price_factor(_ds, "깨진값") == 1.0)
+    check("부가세 배수가 비용에 실린다",
+          abs(_hx.tax_multiplier - 1.10) < 1e-9 and _ds.tax_multiplier == 1.0)
 
     print("\n저부하 시간대 대기")
 

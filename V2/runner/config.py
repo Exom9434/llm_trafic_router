@@ -111,9 +111,25 @@ class ModelSpec:
     max_tokens_param: str = "max_tokens"
     # 직답 프로브의 출력 상한. thinking을 완전히 못 끄는 모델은 더 줘야 한다.
     direct_max_tokens: int = 8
-    # 실측 평균 출력 토큰(2026-08-24 diag_reasoning). 비용 추정에 쓴다.
-    # 상한을 그대로 쓰면 과대평가된다 — Gemini는 상한 24인데 실측이 1이다.
+    # 실측 평균 출력 토큰. 비용 추정에 쓴다. 상한을 그대로 쓰면 과대평가된다.
+    # 2026-09-01에 2차 보정 로그의 은행 문항 평균으로 갈아 끼웠다. 그 전 값은
+    # probe_caps의 넉넉한 상한이나 스모크 테스트의 짧은 문항에서 나온 것이라
+    # 실제보다 컸다(DeepSeek 2,689 대 1,379). 본실험이 도는 것은 은행 문항이므로
+    # 비용도 그 문항들의 출력량으로 재야 한다.
+    # budget.py는 이 값을 쓰지 않고 보정 로그에서 직접 잰다. 이 값은 로그가
+    # 없을 때의 대체값이고, calibrate.py --dry-run이 쓴다.
     measured_output_tokens: int | None = None
+
+    # 시각에 따라 단가가 갈리는 프로바이더. DeepSeek이 2026-08-16부터
+    # 피크/오프피크 이중 요금제를 쓴다. 구간은 [시작, 끝) UTC 시각이며
+    # 오프피크에는 price_in·price_out에 offpeak_multiplier를 곱한다.
+    # price_in·price_out에는 피크 단가를 적는다.
+    peak_hours_utc: tuple = ()
+    offpeak_multiplier: float = 1.0
+
+    # 청구서에 별도로 붙는 세금 배수. CLOVA만 부가세가 별도다.
+    # 단가 자체는 다른 프로바이더와 나란히 놓기 위해 세전으로 적는다.
+    tax_multiplier: float = 1.0
     # thinking/reasoning을 끄거나 최소화하는 프로바이더별 파라미터.
     extra_body: dict = field(default_factory=dict)
     # temperature를 받는가. 2026-08 기준 claude-sonnet-5가 거부한다.
@@ -180,7 +196,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="deepseek_v4_flash",
-        measured_output_tokens=2689,
+        measured_output_tokens=1379,
         region="cn",
         provider="deepseek",
         model="deepseek-v4-flash",
@@ -188,7 +204,9 @@ LINEUP: list[ModelSpec] = [
         api_key_env="DEEPSEEK_API_KEY",
         base_url="https://api.deepseek.com/v1",
         supports_logprobs="no",             # 2026-08-24 실측: 문서와 달리 반환하지 않는다
-        price_in=0.44, price_out=1.32,      # 피크 단가. 오프피크는 정확히 반값.
+        price_in=0.44, price_out=1.32,      # 피크 단가.
+        peak_hours_utc=((1, 4), (6, 10)),   # 2026-08-16 공표. 하루 7시간뿐이다.
+        offpeak_multiplier=0.5,             # 오프피크는 정확히 반값.
         direct_max_tokens=16384,    # probe 실측 p100 기준, 절단 0%
         pinned=False,
         notes=(
@@ -204,7 +222,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="qwen_flash",
-        measured_output_tokens=2040,
+        measured_output_tokens=1687,
         region="cn",
         provider="qwen",
         model="qwen3.7-flash-2026-07-15",
@@ -228,7 +246,7 @@ LINEUP: list[ModelSpec] = [
     ),
     ModelSpec(
         key="anthropic_haiku",
-        measured_output_tokens=131,
+        measured_output_tokens=139,
         direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
         provider="anthropic",
         model="claude-haiku-4-5-20251001",
@@ -258,6 +276,7 @@ LINEUP: list[ModelSpec] = [
         # 1M 토큰 환산: 입력 250원, 출력 1,000원.
         price_in=250.0 / KRW_PER_USD,
         price_out=1000.0 / KRW_PER_USD,
+        tax_multiplier=1.10,                # 부가세 별도. 단가는 세전으로 적는다.
         max_concurrency=2,
         max_rpm=85,
         pinned=True,
@@ -290,7 +309,7 @@ ANCHORS: list[ModelSpec] = [
     ),
     ModelSpec(
         key="anthropic_sonnet5",
-        measured_output_tokens=26,
+        measured_output_tokens=27,
         direct_max_tokens=1024,    # probe 실측 p100 기준, 절단 0%
         provider="anthropic",
         model="claude-sonnet-5",
@@ -531,11 +550,22 @@ def wait_until_window(
 # 본실험 규모 (설계서 7.4절)
 # ─────────────────────────────────────────────────────────────
 
-# 라인업 7개의 일정. 슬롯은 DeepSeek 공표 피크 경계를 걸치도록 배치한다.
+# 본실험 슬롯 시각(UTC). 3시간 간격으로 놓아 DeepSeek 공표 피크 경계
+# (01·04·06·10)를 걸치게 한다. 경계 양쪽을 다 재야 대비가 생긴다(설계서 3.5절).
+# 부수 효과로 8슬롯 중 3개만 피크에 들어 DeepSeek 요금이 내려간다. 배치의
+# 이유는 대비이지 요금이 아니다.
+SLOT_HOURS_UTC = (0, 3, 6, 9, 12, 15, 18, 21)
+
+# 앵커는 하루 4슬롯이므로 위에서 하나 걸러 하나를 쓴다. 하루에 고루 퍼져야
+# 두 조건 대비가 성립한다.
+ANCHOR_SLOT_HOURS_UTC = (0, 6, 12, 18)
+
+# 라인업 6개의 일정. 슬롯은 DeepSeek 공표 피크 경계를 걸치도록 배치한다.
 MAIN_DESIGN = {
     "bank": 300,
     "items_per_slot": 100,     # 은행을 3슬롯에 한 바퀴 훑는다
     "slots_per_day": 8,
+    "slot_hours": SLOT_HOURS_UTC,
     "days": 14,
     "k": 3,                    # 자기일관성용 반복. 7.5절에서 역산한 값이다 —
                                # 은행 300으로 tau<=0.10까지 커버하는 최소 k.
@@ -548,7 +578,7 @@ MAIN_DESIGN = {
 # 하루 2슬롯이면 조건당 관측이 4.7회뿐이라 tau=0에서도 337문항을 요구한다.
 # 은행 300으로는 기준선 미달이다. 4슬롯이 7.5절의 선언된 규칙(은행 300으로
 # tau<=0.10까지 3%p 하락 검출)을 만족하는 최소값이다.
-ANCHOR_DESIGN = {**MAIN_DESIGN, "slots_per_day": 4}
+ANCHOR_DESIGN = {**MAIN_DESIGN, "slots_per_day": 4, "slot_hours": ANCHOR_SLOT_HOURS_UTC}
 
 # 반복 수는 모든 모델이 같다(설계서 7.5절). 모델별로 다르게 주면
 # "왜 저 모델만"에 답해야 하는데, 검정력 기준으로는 답이 나오지 않는다.
