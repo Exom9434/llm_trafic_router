@@ -127,6 +127,12 @@ class ModelSpec:
     peak_hours_utc: tuple = ()
     offpeak_multiplier: float = 1.0
 
+    # 추론을 일부러 켜고 운용하는가. 추론 토큰이 이 연구의 주력 지표인데
+    # (설계서 3.4절) 끄면 그 지표가 항상 0이 된다. DeepSeek은 끌 방법이 없어
+    # 켜진 채로 두고, Qwen은 끄면 오답률이 올라 켠다. 이 모델들에서 추론
+    # 토큰이 0이 아닌 것은 정상이므로 예산 경고 대상에서 뺀다.
+    reasoning_on_purpose: bool = False
+
     # 청구서에 별도로 붙는 세금 배수. CLOVA만 부가세가 별도다.
     # 단가 자체는 다른 프로바이더와 나란히 놓기 위해 세전으로 적는다.
     tax_multiplier: float = 1.0
@@ -208,6 +214,7 @@ LINEUP: list[ModelSpec] = [
         peak_hours_utc=((1, 4), (6, 10)),   # 2026-08-16 공표. 하루 7시간뿐이다.
         offpeak_multiplier=0.5,             # 오프피크는 정확히 반값.
         direct_max_tokens=16384,    # probe 실측 p100 기준, 절단 0%
+        reasoning_on_purpose=True,
         pinned=False,
         notes=(
             "구 deepseek-chat은 2026-07-24 서비스 종료. v4-flash가 후계다. "
@@ -233,6 +240,7 @@ LINEUP: list[ModelSpec] = [
         price_in=0.03, price_out=0.13,
         direct_max_tokens=8192,    # probe 실측 p100 기준, 절단 0%
         extra_body={"enable_thinking": True},
+        reasoning_on_purpose=True,
         pinned=True,
         notes=(
             "qwen3.5-flash는 legacy로 밀렸다. 3.7-flash에 날짜 스냅샷이 있어 "

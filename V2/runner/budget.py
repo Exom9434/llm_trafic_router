@@ -412,7 +412,16 @@ def main() -> None:
               f"${e['day_reserve']:>8.2f}")
     print(f"\n  투영 총액: ${plan['projected_grand_total']:,.2f}")
 
-    leaking = [k for k, e in plan["models"].items() if e["measured_reasoning_tokens"] > 0]
+    # 추론을 일부러 켠 모델은 경고 대상이 아니다. 그 모델들에서 추론 토큰이
+    # 0이 아닌 것은 주력 지표가 살아 있다는 뜻이다(설계서 3.4절).
+    on_purpose = {m.key for m in models if m.reasoning_on_purpose}
+    intended = [k for k, e in plan["models"].items()
+                if e["measured_reasoning_tokens"] > 0 and k in on_purpose]
+    leaking = [k for k, e in plan["models"].items()
+               if e["measured_reasoning_tokens"] > 0 and k not in on_purpose]
+    if intended:
+        print(f"\n  추론을 켜고 운용하는 모델 — {', '.join(intended)}")
+        print("        추론 토큰이 0이 아닌 것이 정상이다. 이 값이 주력 지표다.")
     if leaking:
         print(f"\n  경고: 추론 토큰이 0이 아닌 모델 — {', '.join(leaking)}")
         print("        config.py의 extra_body가 안 먹었을 수 있다. 비용이 크게 뛴다.")

@@ -42,7 +42,18 @@ def group_records(records: list[dict]) -> dict[tuple[str, str], list[dict]]:
 
 
 def item_stats(grouped, pool_by_id) -> list[dict]:
-    """문항별 난이도와 건전성 지표."""
+    """문항별 난이도와 건전성 지표.
+
+    오류를 셀 때 실패 행의 개수를 세면 안 된다. 재개 키가 성공한 콜만
+    세기 때문에 실패한 콜은 다시 시도되고, 성공하더라도 실패 행은 로그에
+    그대로 남는다. 행을 세면 이미 회수된 옛 장애가 결측으로 잡힌다.
+
+    2026-09-03 확인: 네이버의 08-26 429 508건은 전부 재시도로 회수됐는데
+    오류율이 10.5%로 찍혔고, 그 때문에 멀쩡한 문항 53개가 은행에서 빠졌다.
+
+    그래서 콜 하나를 `call_key`로 식별하고, 성공 기록이 하나도 없는
+    call_key만 결측으로 센다. 분모도 행 수가 아니라 시도한 콜의 가짓수다.
+    """
     by_item: dict[str, dict[str, list[dict]]] = defaultdict(dict)
     for (item_id, model_key), recs in grouped.items():
         by_item[item_id][model_key] = recs
@@ -50,11 +61,14 @@ def item_stats(grouped, pool_by_id) -> list[dict]:
     rows = []
     for item_id, models in by_item.items():
         per_model_acc = []
-        n_calls = n_err = n_parse_fail = 0
+        n_attempted = n_missing = n_parse_fail = n_ok = 0
         for model_key, recs in models.items():
             ok = [r for r in recs if r.get("error") is None]
-            n_calls += len(recs)
-            n_err += len(recs) - len(ok)
+            done = {r.get("call_key") for r in ok}
+            attempted = {r.get("call_key") for r in recs}
+            n_attempted += len(attempted)
+            n_missing += len(attempted - done)
+            n_ok += len(ok)
             n_parse_fail += sum(1 for r in ok if r.get("parsed_letter") is None)
             scored = [r["correct"] for r in ok if r.get("correct") is not None]
             if scored:
@@ -66,34 +80,50 @@ def item_stats(grouped, pool_by_id) -> list[dict]:
             "item_id": item_id,
             "subject": item.get("subject", ""),
             "n_models": len(per_model_acc),
-            "n_calls": n_calls,
+            "n_calls": n_attempted,
             "difficulty": round(statistics.mean(per_model_acc), 4),
             "acc_spread": round(max(per_model_acc) - min(per_model_acc), 4),
-            "error_rate": round(n_err / n_calls, 4) if n_calls else 0.0,
-            "parse_fail_rate": round(n_parse_fail / max(1, n_calls - n_err), 4),
+            # 끝내 채우지 못한 콜의 비율. 재시도로 회수된 장애는 세지 않는다.
+            "error_rate": round(n_missing / n_attempted, 4) if n_attempted else 0.0,
+            "parse_fail_rate": round(n_parse_fail / max(1, n_ok), 4),
         })
     return rows
 
 
-def noise_floor(grouped) -> list[dict]:
+def noise_floor(grouped, only_items: set[str] | None = None) -> list[dict]:
     """모델별 노이즈 바닥선.
 
     self_consistency = temp>0 반복에서 최빈 답이 차지하는 비율의 문항 평균.
     1.0이면 흔들림이 없고, 1/선택지수에 가까우면 사실상 무작위다.
+
+    `only_items`를 주면 그 문항들로만 잰다. 본실험이 순회하는 것은 확정된
+    은행이므로 기준선도 같은 문항에서 나와야 한다. 후보 풀 전체로 재면
+    모든 모델이 다 맞히는 쉬운 문항이 섞여 바닥선이 위로 뜬다.
+
+    2026-09-03 확인: 풀 720으로 잰 값이 은행 300 기준보다 luna에서 5.4%p,
+    gemini에서 3.3%p, haiku에서 3.0%p 높았다. 검출하려는 효과가 3%p이므로
+    (설계서 7.2절) 기준선 오차가 효과 크기와 같은 규모다. 그대로 쓰면
+    부하가 없어도 바닥선 아래로 떨어진 것처럼 보인다.
     """
     by_model: dict[str, list[list[dict]]] = defaultdict(list)
-    for (_item_id, model_key), recs in grouped.items():
+    for (item_id, model_key), recs in grouped.items():
+        if only_items is not None and item_id not in only_items:
+            continue
         by_model[model_key].append(recs)
 
     rows = []
     for model_key, item_groups in sorted(by_model.items()):
         cons, t0_acc, p_gold, logprob, margin, reasoning = [], [], [], [], [], []
-        n_calls = n_err = n_parse_fail = 0
+        # 오류는 행이 아니라 끝내 못 채운 콜로 센다. item_stats와 같은 이유다.
+        n_attempted = n_missing = n_parse_fail = n_ok = 0
 
         for recs in item_groups:
             ok = [r for r in recs if r.get("error") is None]
-            n_calls += len(recs)
-            n_err += len(recs) - len(ok)
+            attempted = {r.get("call_key") for r in recs}
+            done = {r.get("call_key") for r in ok}
+            n_attempted += len(attempted)
+            n_missing += len(attempted - done)
+            n_ok += len(ok)
             n_parse_fail += sum(1 for r in ok if r.get("parsed_letter") is None)
 
             reps = [r["parsed_letter"] for r in ok if r.get("rep", 0) >= 1 and r.get("parsed_letter")]
@@ -120,9 +150,9 @@ def noise_floor(grouped) -> list[dict]:
         rows.append({
             "model_key": model_key,
             "n_items": len(item_groups),
-            "n_calls": n_calls,
-            "error_rate": round(n_err / n_calls, 4) if n_calls else 0.0,
-            "parse_fail_rate": round(n_parse_fail / max(1, n_calls - n_err), 4),
+            "n_calls": n_attempted,
+            "error_rate": round(n_missing / n_attempted, 4) if n_attempted else 0.0,
+            "parse_fail_rate": round(n_parse_fail / max(1, n_ok), 4),
             "temp0_accuracy": avg(t0_acc),
             "self_consistency": avg(cons),
             "consistency_sd": round(statistics.pstdev(cons), 4) if len(cons) > 1 else None,
@@ -200,10 +230,13 @@ def main() -> None:
 
     grouped = group_records(records)
     stats = item_stats(grouped, pool_by_id)
-    floors = noise_floor(grouped)
     kept, selected = select_bank(
         stats, args.lo, args.hi, args.per_subject, args.max_error, args.max_parse_fail
     )
+    # 바닥선은 은행이 정해진 뒤에 그 문항들로만 잰다. 순서가 뒤바뀌면
+    # 본실험이 쓰지도 않을 문항이 기준선에 섞인다.
+    bank_ids = {s["item_id"] for s in selected}
+    floors = noise_floor(grouped, only_items=bank_ids)
 
     bank = [pool_by_id[s["item_id"]] for s in selected if s["item_id"] in pool_by_id]
     bank_path = DATA_DIR / "item_bank.json"
