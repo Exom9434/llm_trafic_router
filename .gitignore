@@ -3,6 +3,9 @@ gen-lang-client.json
 logs/
 __pycache__/
 *.csv
+# V2 보정 패스 산출물은 예외다. 노이즈 바닥선은 본실험의 기준선이고
+# 문항 난이도는 은행 선별의 근거라 둘 다 논문에 들어간다.
+!V2/runner/outputs/*.csv
 progress.json
 analysis/outputs/
 analysis/__pycache__/
