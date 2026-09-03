@@ -133,6 +133,20 @@ class ModelSpec:
     # 토큰이 0이 아닌 것은 정상이므로 예산 경고 대상에서 뺀다.
     reasoning_on_purpose: bool = False
 
+    # 이 모델의 읽기 타임아웃(초). None이면 READ_TIMEOUT을 쓴다.
+    # requests의 timeout은 총 소요시간이 아니라 "바이트가 도착하지 않고 흐른
+    # 시간"이다. 그래서 같은 값이 프로바이더마다 다르게 문다. 2026-09-03
+    # 보정 로그에서 DeepSeek은 60초를 넘긴 성공 콜이 327건(재시도 0이 205건,
+    # 최대 203.6초)인데 60초 타임아웃에 걸리지 않았다. 응답 헤더를 먼저
+    # 흘려주기 때문이다. Qwen은 흘려주지 않아 같은 60초에서 죽었다.
+    # 값을 모델별로 두는 이유가 여기 있다. 처리량과 출력량이 모델마다
+    # 다르므로 하나의 값은 어떤 모델에는 헐겁고 어떤 모델에는 문다.
+    #
+    # 기준: 타임아웃이 절대 바인딩하지 않게 한다. 콜 길이를 제한하는 것은
+    # 출력 상한(direct_max_tokens) 하나여야 한다. 그래야 결측이 지표와
+    # 상관되지 않는다. 값은 (상한 토큰 / 실측 tps 1퍼센타일) x 부하 여유 2배.
+    read_timeout: float | None = None
+
     # 청구서에 별도로 붙는 세금 배수. CLOVA만 부가세가 별도다.
     # 단가 자체는 다른 프로바이더와 나란히 놓기 위해 세전으로 적는다.
     tax_multiplier: float = 1.0
@@ -214,6 +228,10 @@ LINEUP: list[ModelSpec] = [
         peak_hours_utc=((1, 4), (6, 10)),   # 2026-08-16 공표. 하루 7시간뿐이다.
         offpeak_multiplier=0.5,             # 오프피크는 정확히 반값.
         direct_max_tokens=16384,    # probe 실측 p100 기준, 절단 0%
+        # 2026-09-03 보정 실측: 성공 콜 최대 203.6초, 출력 16,385토큰으로 상한
+        # 도달. tps 1퍼센타일 64.4 기준 상한 16,384토큰을 다 뽑는 데 254초.
+        # 300초면 출력 상한이 콜 길이를 정하는 유일한 제약이 된다.
+        read_timeout=300.0,
         reasoning_on_purpose=True,
         pinned=False,
         notes=(
@@ -239,6 +257,14 @@ LINEUP: list[ModelSpec] = [
         supports_logprobs="unknown",        # 2026-08-24 실측: logprobs 요청이 거절된다. 사유 확인 필요
         price_in=0.03, price_out=0.13,
         direct_max_tokens=8192,    # probe 실측 p100 기준, 절단 0%
+        # 2026-09-03 보정 실측: 60초에서 잘렸다. ReadTimeout 57건이 같은 5문항에
+        # 몰렸고 14~18회 재시도가 전부 같은 자리에서 죽었다. 성공 분포도 p99 54.6초,
+        # 최대 60.8초로 상한에 붙어 있어 절단된 모양이다.
+        # 이 모델은 max_tokens를 무시해 관측 출력이 8,728토큰까지 갔다. tps
+        # 1퍼센타일 81.6 기준 107초가 필요하고, 부하로 처리량이 절반이 되면 214초다.
+        # 추론 토큰이 이 모델의 주력 지표인데 오래 추론한 콜부터 사라지면
+        # 결측이 지표와 상관된다. 그래서 라인업에서 가장 넉넉하게 잡는다.
+        read_timeout=300.0,
         extra_body={"enable_thinking": True},
         reasoning_on_purpose=True,
         pinned=True,
@@ -605,4 +631,15 @@ DAY_RESERVE_MARGIN = 1.25
 # 재시도
 MAX_RETRIES = 4
 RETRY_BASE_SLEEP = 2.0
-REQUEST_TIMEOUT = 60.0
+
+# 연결 타임아웃. TCP/TLS 핸드셰이크까지다. 여기서 오래 걸리는 것은
+# 생성이 아니라 망 문제이므로 짧게 잡고 재시도에 맡긴다.
+CONNECT_TIMEOUT = 10.0
+
+# 기본 읽기 타임아웃. 출력이 짧은 모델(상한 64~2,048토큰)의 값이다.
+# 2026-09-03 보정 실측에서 이 모델들의 최대 응답이 13.5초(haiku)였으므로
+# 9배 여유다. 추론 모델은 ModelSpec.read_timeout이 덮어쓴다.
+READ_TIMEOUT = 120.0
+
+# 이전 이름. 2026-09-03에 (CONNECT_TIMEOUT, READ_TIMEOUT)으로 갈랐다.
+REQUEST_TIMEOUT = READ_TIMEOUT

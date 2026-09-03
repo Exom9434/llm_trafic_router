@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import MAX_RETRIES, RETRY_BASE_SLEEP, REQUEST_TIMEOUT  # noqa: E402
+from config import MAX_RETRIES, RETRY_BASE_SLEEP, CONNECT_TIMEOUT, READ_TIMEOUT  # noqa: E402
 
 
 @dataclass
@@ -74,6 +74,12 @@ class BaseAdapter:
     def __init__(self, spec):
         self.spec = spec
         self.session = requests.Session()
+        # (연결, 읽기) 초. 읽기 쪽은 총 소요시간이 아니라 바이트가 도착하지
+        # 않고 흐른 시간이다. 모델별 근거는 config.py의 read_timeout 주석에 있다.
+        self.timeout = (
+            CONNECT_TIMEOUT,
+            getattr(spec, "read_timeout", None) or READ_TIMEOUT,
+        )
         # 모델 하나당 어댑터 하나를 그 모델의 스레드 풀이 공유하므로,
         # 여기서 간격을 지키면 그 모델의 전체 발사 속도가 잡힌다.
         self._rate_lock = threading.Lock()
@@ -131,7 +137,7 @@ class BaseAdapter:
             t0 = time.perf_counter()
             try:
                 resp = self.session.post(
-                    url, headers=self._headers(), json=payload, timeout=REQUEST_TIMEOUT
+                    url, headers=self._headers(), json=payload, timeout=self.timeout
                 )
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 status = resp.status_code
@@ -151,6 +157,13 @@ class BaseAdapter:
                 last_error = f"HTTP {resp.status_code}: {resp.text[:300]}"
                 if resp.status_code not in RETRYABLE_STATUS:
                     break
+            except requests.Timeout as e:
+                # 타임아웃 결측은 다른 실패와 성격이 다르다. 오래 걸린 콜부터
+                # 사라지므로 결측이 지표와 상관된다(2026-09-03 Qwen 건).
+                # 진단이 따로 셀 수 있게 설정값을 오류 문자열에 남긴다.
+                last_error = (
+                    f"{type(e).__name__}: timeout={self.timeout[1]:.0f}s {e}"
+                )
             except requests.RequestException as e:
                 last_error = f"{type(e).__name__}: {e}"
 

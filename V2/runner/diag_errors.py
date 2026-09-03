@@ -57,6 +57,10 @@ def main() -> None:
     http_codes = collections.defaultdict(collections.Counter)
     fail_items = collections.defaultdict(collections.Counter)
     blank_samples = collections.defaultdict(list)
+    # 타임아웃은 다른 실패와 성격이 다르다. 오래 걸린 콜부터 사라지므로
+    # 결측이 지표(추론 토큰)와 상관된다. 회수 여부까지 따로 센다.
+    timeout_keys = collections.defaultdict(set)     # 타임아웃을 맞은 call_key
+    success_keys = collections.defaultdict(set)     # 한 번이라도 성공한 call_key
 
     with path.open(encoding="utf-8") as fh:
         for line in fh:
@@ -77,9 +81,13 @@ def main() -> None:
                     http_codes[key][r["http_status"]] += 1
                 if r.get("item_id"):
                     fail_items[key][r["item_id"]] += 1
+                if "Timeout" in str(r["error"]) and r.get("call_key"):
+                    timeout_keys[key].add(r["call_key"])
                 continue
 
             ok[key] += 1
+            if r.get("call_key"):
+                success_keys[key].add(r["call_key"])
             out = r.get("output_tokens")
             if out is not None:
                 out_max[key] = max(out_max[key], out)
@@ -115,6 +123,19 @@ def main() -> None:
 
     print(f"\n합계 — 성공 {sum(ok.values()):,} · 오류 {sum(errs.values()):,} · "
           f"파싱실패 {sum(parse_fail.values()):,}")
+
+    if timeout_keys:
+        print("\n" + "=" * 72)
+        print("타임아웃 (지표와 상관된 결측을 만든다 — 설계서 8.1절)")
+        print("=" * 72)
+        print(f"{'모델':28s} {'맞은 콜':>9s} {'미회수':>9s}")
+        print("-" * 50)
+        for key in sorted(timeout_keys):
+            lost = timeout_keys[key] - success_keys[key]
+            print(f"{key:28s} {len(timeout_keys[key]):9,} {len(lost):9,}")
+        print("\n미회수가 0이 아니면 그 콜들은 오래 추론한 콜일 가능성이 높다.")
+        print("남은 관측만 보면 추론 토큰이 짧아진 것처럼 보이므로, 값을 그대로")
+        print("쓰지 말고 read_timeout을 올린 뒤 다시 채운다.")
 
     if errs:
         print("\n" + "=" * 72)
