@@ -20,6 +20,7 @@ import csv
 import json
 import statistics
 from collections import Counter, defaultdict
+from itertools import combinations
 from pathlib import Path
 
 from calllog import read_records
@@ -90,6 +91,10 @@ def item_stats(grouped, pool_by_id) -> list[dict]:
     return rows
 
 
+# 본실험의 반복 수(설계서 7.5절). 바닥선은 이 k에서도 함께 낸다.
+MAIN_K = 3
+
+
 def noise_floor(grouped, only_items: set[str] | None = None) -> list[dict]:
     """모델별 노이즈 바닥선.
 
@@ -114,6 +119,7 @@ def noise_floor(grouped, only_items: set[str] | None = None) -> list[dict]:
     rows = []
     for model_key, item_groups in sorted(by_model.items()):
         cons, t0_acc, p_gold, logprob, margin, reasoning = [], [], [], [], [], []
+        cons_k: list[float] = []
         # 오류는 행이 아니라 끝내 못 채운 콜로 센다. item_stats와 같은 이유다.
         n_attempted = n_missing = n_parse_fail = n_ok = 0
 
@@ -129,6 +135,19 @@ def noise_floor(grouped, only_items: set[str] | None = None) -> list[dict]:
             reps = [r["parsed_letter"] for r in ok if r.get("rep", 0) >= 1 and r.get("parsed_letter")]
             if len(reps) >= 2:
                 cons.append(Counter(reps).most_common(1)[0][1] / len(reps))
+                # 본실험이 도는 k에서의 값도 함께 낸다. 추정량이 k에 따라
+                # 움직이기 때문이다. 2026-09-03 실측(analysis/11_k_curve.py)에서
+                # E[c_3]이 E[c_5]보다 0.4~3.8%p 높았다. 검출 목표가 3%p인데
+                # 기준선이 그만큼 어긋나면 부하가 없어도 바닥선 아래로 떨어진
+                # 것처럼 보인다. 풀 720으로 바닥선을 쟀던 오류와 같은 종류다.
+                # 다시 돌릴 필요는 없다. 5개 표본에서 k개씩 전부 꺼내 평균하면
+                # k개 i.i.d. 표본의 기댓값이 편향 없이 나온다.
+                if len(reps) > MAIN_K:
+                    cons_k.append(statistics.fmean(
+                        Counter(c).most_common(1)[0][1] / MAIN_K
+                        for c in combinations(reps, MAIN_K)))
+                elif len(reps) == MAIN_K:
+                    cons_k.append(Counter(reps).most_common(1)[0][1] / MAIN_K)
 
             for r in ok:
                 if r.get("rep", 0) != 0:
@@ -155,6 +174,8 @@ def noise_floor(grouped, only_items: set[str] | None = None) -> list[dict]:
             "parse_fail_rate": round(n_parse_fail / max(1, n_ok), 4),
             "temp0_accuracy": avg(t0_acc),
             "self_consistency": avg(cons),
+            # 본실험 기준선. 5절이 "고부하에 이 값 아래로 떨어지는가"를 검정한다.
+            f"self_consistency_k{MAIN_K}": avg(cons_k),
             "consistency_sd": round(statistics.pstdev(cons), 4) if len(cons) > 1 else None,
             "mean_p_gold": avg(p_gold),
             "mean_answer_logprob": avg(logprob),
@@ -267,14 +288,19 @@ def main() -> None:
         "`self_consistency`는 temp>0 반복에서 최빈 답의 비율이다. 본실험은 각 모델이",
         "고부하 시간대에 이 값 아래로 떨어지는지를 검정한다.",
         "",
-        "| 모델 | temp0 정확도 | 자기일관성 | 추론토큰 | 평균 p(정답) | 평균 margin | 파싱실패율 | 오류율 | logprob |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|:--:|",
+        f"보정은 k=5로 돌았고 본실험은 k={MAIN_K}으로 돈다. 추정량이 k에 따라 움직이므로",
+        f"기준선으로 쓸 값은 `자기일관성 k={MAIN_K}` 쪽이다. 5개 표본에서 {MAIN_K}개씩 전부",
+        "꺼내 평균한 값이며 편향이 없다.",
+        "",
+        "| 모델 | temp0 정확도 | 자기일관성 k=5 | 자기일관성 k=3 | 추론토큰 | 평균 p(정답) | 평균 margin | 파싱실패율 | 오류율 | logprob |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|:--:|",
     ]
     for r in floors:
         def fmt(v):
             return "—" if v is None else f"{v:.3f}"
         lines.append(
             f"| {r['model_key']} | {fmt(r['temp0_accuracy'])} | {fmt(r['self_consistency'])} | "
+            f"{fmt(r.get(f'self_consistency_k{MAIN_K}'))} | "
             f"{fmt(r['mean_reasoning_tokens'])} | "
             f"{fmt(r['mean_p_gold'])} | {fmt(r['mean_margin'])} | {fmt(r['parse_fail_rate'])} | "
             f"{fmt(r['error_rate'])} | {'O' if r['has_logprob'] else 'X'} |"
