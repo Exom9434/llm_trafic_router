@@ -32,3 +32,9 @@ report/references.bib
 .venv/
 uv.lock.bak
 .python-version
+
+# 대용량 호출 로그. calibration_calls.jsonl은 문항 은행과 노이즈 바닥선의
+# 근거이므로 커밋한다(45MB, GitHub 상한 아래). 코드가 이 경로를 그대로
+# 읽으므로 압축하지 않는다.
+*.jsonl.bak
+V2/runner/outputs/calibration_calls_v1_badcaps.jsonl
