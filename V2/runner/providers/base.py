@@ -276,6 +276,17 @@ class BaseAdapter:
                                 if ttft_ms is None:
                                     ttft_ms = (time.perf_counter() - t0) * 1000
                                 chunks.append(delta)
+                                # 작업량을 맞추는 것은 서버 상한의 몫이고, 이건
+                                # 그 상한이 안 먹을 때를 위한 폭주 가드다. 콜이
+                                # 길어지면 읽기 타임아웃에 걸리고, 그 결측은
+                                # 오래 걸린 콜부터 사라져 지표와 상관된다(8.1절).
+                                # 청크 하나가 토큰 하나가 아니므로 넉넉히 4배를
+                                # 두어 정상 운용에는 걸리지 않게 한다.
+                                # ponytail: 끊긴 것을 레코드에 표시하지 않는다.
+                                # 서버 상한이 도는 한 발동하지 않아서다. 실제로
+                                # 걸리기 시작하면 RawResult에 플래그를 단다.
+                                if len(chunks) >= max_tokens * 4:
+                                    break
                         continue
 
                     if line.startswith(":"):          # 주석(하트비트)

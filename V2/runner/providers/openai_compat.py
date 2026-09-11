@@ -79,14 +79,20 @@ class OpenAICompatAdapter(BaseAdapter):
     # usage를 스트림 끝에 붙여 달라는 옵션. OpenAI가 정의했고 호환
     # 엔드포인트 대부분이 따라왔으나 전부는 아니다. 거부하는 프로바이더가
     # 있으면 러너가 시작 점검에서 이 값을 False로 내리고 다시 시도한다.
+    # 다만 그 강등은 시작 점검이 만든 어댑터에만 남고 슬롯마다 새로 만드는
+    # 어댑터에는 이어지지 않는다. 항구적으로 끄려면 ModelSpec.stream_usage다.
     # 그 경우 지연 프로브의 토큰 수가 비는데, 지연 지표는 TTFT와 총 소요시간이라
     # 지장이 없다.
     stream_usage = True
 
     def _stream_payload(self, payload: dict) -> dict:
         payload["stream"] = True
-        if self.stream_usage:
+        if self.stream_usage and self.spec.stream_usage:
             payload["stream_options"] = {"include_usage": True}
+        # 지연 프로브 전용 상한. 근거는 config.py의 같은 이름 주석에 있다.
+        alt = self.spec.latency_max_tokens_param
+        if alt:
+            payload[alt] = payload.pop(self.spec.max_tokens_param)
         return payload
 
     def _stream_event(self, event: str, obj: dict, acc: dict) -> str:
@@ -106,4 +112,9 @@ class OpenAICompatAdapter(BaseAdapter):
         if not choices:
             return ""
         delta = choices[0].get("delta") or {}
-        return delta.get("content") or ""
+        # 추론 모델은 본문보다 reasoning_content가 먼저 온다. content만 보면
+        # TTFT가 첫 토큰이 아니라 추론이 끝난 시각이 되고, 추론 길이가 지연에
+        # 섞인다. 추론 길이는 이 연구가 재려는 품질 지표다(설계서 3.4절).
+        # 2026-09-11 DeepSeek은 아예 TTFT가 안 잡혔다. 추론 53~72토큰이 지연
+        # 프로브 상한 64를 다 먹어 본문이 한 줄도 나오지 않았다.
+        return delta.get("content") or delta.get("reasoning_content") or ""

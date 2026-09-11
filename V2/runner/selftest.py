@@ -686,6 +686,38 @@ if __name__ == "__main__":
     check("같은 날을 두 번 적지 않는다",
           len(led.path.read_text(encoding="utf-8").splitlines()) == before)
 
+    print("\n[스트리밍 델타 파싱]")
+
+    from providers.openai_compat import OpenAICompatAdapter as _OC
+
+    def _delta(d):
+        return _OC._stream_event(
+            None, "", {"choices": [{"delta": d}]}, {})
+
+    check("본문 토큰을 델타로 센다", _delta({"content": "A"}) == "A")
+    check("추론 토큰도 델타로 센다 (DeepSeek 2026-09-11)",
+          _delta({"content": None, "reasoning_content": "We"}) == "We")
+    check("본문이 있으면 본문을 쓴다",
+          _delta({"content": "A", "reasoning_content": "x"}) == "A")
+    check("빈 델타는 TTFT를 잡지 않는다",
+          _delta({"content": None, "reasoning_content": ""}) == "")
+    check("stream_options를 거부하는 모델은 스펙에서 꺼져 있다",
+          not next(m for m in ALL_MODELS if m.key == "qwen_flash").stream_usage)
+
+    qwen = next(m for m in ALL_MODELS if m.key == "qwen_flash")
+    _a = _OC(qwen)
+    _p = _a._stream_payload(_a._payload([], 0.0, 64, False, 0))
+    check("지연 프로브는 추론까지 묶는 상한으로 간다",
+          _p.get("max_completion_tokens") == 64 and "max_tokens" not in _p)
+    _q = _a._payload([], 0.0, 8192, False, 0)
+    check("품질 프로브는 max_tokens 그대로",
+          _q.get("max_tokens") == 8192 and "max_completion_tokens" not in _q)
+    _h = next(m for m in ALL_MODELS if m.key == "openai_gpt56_luna")
+    _hp = _OC(_h)
+    _hp2 = _hp._stream_payload(_hp._payload([], 0.0, 64, False, 0))
+    check("갈아 끼울 것이 없는 모델은 건드리지 않는다",
+          _hp2.get(_h.max_tokens_param) == 64)
+
     print()
     if _failures:
         print(f"실패 {len(_failures)}건: {_failures}")

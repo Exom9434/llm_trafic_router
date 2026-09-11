@@ -157,6 +157,17 @@ class ModelSpec:
     supports_temperature: bool = True
     # 버전 고정이 가능한가. 불가능하면 fingerprint·반환모델로 사후 탐지한다.
     pinned: bool = False
+    # 스트림 끝에 usage를 붙여 달라는 stream_options를 받는가. 2026-09-11 측정
+    # 서버에서 Qwen이 이 옵션에 400을 주지 않고 연결만 열어 둔 채 아무것도
+    # 보내지 않았다. 총 소요시간 상한 180초에 재시도 4회가 물려 콜 하나가
+    # 12분을 태운다. 받지 않는 모델은 여기서 끈다.
+    stream_usage: bool = True
+    # 지연 프로브에서만 쓰는 출력 상한 파라미터 이름. thinking이 켜진 모델은
+    # max_tokens가 본문만 자르고 추론은 안 자른다. 지연 프로브는 품질을 재지
+    # 않으므로 여기서는 추론까지 묶는 파라미터로 갈아 끼워 작업량을 상수로
+    # 만든다(설계서 4.1절). 품질 프로브는 이 값을 쓰지 않는다. 거기서 추론을
+    # 자르면 이 연구의 주력 지표가 깎인다.
+    latency_max_tokens_param: str | None = None
     notes: str = ""
 
     def env_key(self) -> str | None:
@@ -260,11 +271,17 @@ LINEUP: list[ModelSpec] = [
         # 2026-09-03 보정 실측: 60초에서 잘렸다. ReadTimeout 57건이 같은 5문항에
         # 몰렸고 14~18회 재시도가 전부 같은 자리에서 죽었다. 성공 분포도 p99 54.6초,
         # 최대 60.8초로 상한에 붙어 있어 절단된 모양이다.
-        # 이 모델은 max_tokens를 무시해 관측 출력이 8,728토큰까지 갔다. tps
+        # 상한 8,192에 관측 출력 8,728이다. 무시한 것이 아니라 thinking이 켜진
+        # 이 모델에서 max_tokens가 본문만 자르고 추론은 안 자르기 때문이다.
+        # 초과분 536이 추론 몫이다. 2026-09-11에 지연 프로브 상한 64에 출력
+        # 24,960(추론 24,892, 본문 68)이 나와 같은 구조가 확인되었다. 여기
+        # 품질 프로브는 그대로 둔다. 추론까지 묶으면 주력 지표가 깎인다. tps
         # 1퍼센타일 81.6 기준 107초가 필요하고, 부하로 처리량이 절반이 되면 214초다.
         # 추론 토큰이 이 모델의 주력 지표인데 오래 추론한 콜부터 사라지면
         # 결측이 지표와 상관된다. 그래서 라인업에서 가장 넉넉하게 잡는다.
         read_timeout=300.0,
+        stream_usage=False,        # 2026-09-11 실측: include_usage에 무응답으로 매달린다
+        latency_max_tokens_param="max_completion_tokens",
         extra_body={"enable_thinking": True},
         reasoning_on_purpose=True,
         pinned=True,
