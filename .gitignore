@@ -3,6 +3,7 @@ gen-lang-client.json
 logs/
 __pycache__/
 *.csv
+*.hwpx
 # V2 보정 패스 산출물은 예외다. 노이즈 바닥선은 본실험의 기준선이고
 # 문항 난이도는 은행 선별의 근거라 둘 다 논문에 들어간다.
 !V2/runner/outputs/*.csv
@@ -38,3 +39,7 @@ uv.lock.bak
 # 읽으므로 압축하지 않는다.
 *.jsonl.bak
 V2/runner/outputs/calibration_calls_v1_badcaps.jsonl
+
+# 한글 문서 정본. 바이너리라 버전이 늘수록 저장소가 무거워진다.
+*.hwpx
+*.hwp
