@@ -1,0 +1,32 @@
+# 본실험 러너 서비스. 21일 무인 실행이라 사람이 다시 띄워 줄 수 없다.
+#
+#   sudo cp ~/llm_trafic_router/V2/deploy/llm-experiment.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now llm-experiment
+#   journalctl -u llm-experiment -f
+[Unit]
+Description=LLM traffic router main experiment runner
+After=network-online.target chrony.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/llm_trafic_router/V2/runner
+ExecStart=/home/ubuntu/llm_trafic_router/.venv/bin/python -u experiment.py --vantage kr-seoul
+
+# 러너가 죽어도 슬롯을 놓치지 않게 다시 띄운다. 재개는 로그에서 끝난 콜을
+# 읽어 이어가므로 같은 콜을 두 번 쏘지 않는다.
+Restart=always
+RestartSec=30
+
+# 램이 1GB라 재시도가 몰릴 때 OOM 킬러가 이 프로세스를 먼저 고를 수 있다.
+# 스왑이 있지만 우선순위도 낮춰 둔다.
+OOMScoreAdjust=-500
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=llm-experiment
+
+[Install]
+WantedBy=multi-user.target

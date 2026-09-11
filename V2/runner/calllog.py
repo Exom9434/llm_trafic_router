@@ -26,6 +26,14 @@ class CallRecord:
     ts_utc: str = ""
     ts_local: str = ""
     slot: str = ""                   # 본실험 슬롯 라벨 (보정 패스에서는 빈 값)
+    # 실행 첫날부터 이어지는 전역 슬롯 번호. 하루 8슬롯과 묶음 주기 3이
+    # 서로소라 이 번호가 날을 넘겨 이어져야 모든 묶음이 여덟 시각을 고루
+    # 통과한다. 분석 전에 묶음별 시각 분포를 확인하는 근거가 이 값이다.
+    slot_index: int | None = None
+    item_group: int | None = None    # 이 슬롯이 도는 은행 묶음 (0~2)
+    # 고부하/저부하 라벨. 실행 시각에 박는다. 사후에 계산하면 계산 규칙이
+    # 다시 자유도가 되고, 조건 정의는 이 설계에서 가장 조작되기 쉬운 자리다.
+    condition: str | None = None     # "peak" | "offpeak"
     vantage: str = ""                # 측정 지점 라벨
     # ── 대상 ──
     model_key: str = ""

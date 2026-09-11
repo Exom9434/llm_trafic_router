@@ -1,0 +1,15 @@
+# 한 시간마다 감시. 슬롯 간격이 3시간이므로 한 시간이면 침묵을 늦지 않게 잡는다.
+#
+#   sudo cp ~/llm_trafic_router/V2/deploy/llm-experiment-monitor.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now llm-experiment-monitor.timer
+[Unit]
+Description=Run the LLM experiment monitor hourly
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=LLM experiment monitor (silence detection and daily summary)
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/llm_trafic_router/V2/runner
+ExecStart=/home/ubuntu/llm_trafic_router/.venv/bin/python monitor.py
+SyslogIdentifier=llm-experiment-monitor

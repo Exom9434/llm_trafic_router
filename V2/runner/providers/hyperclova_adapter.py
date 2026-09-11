@@ -67,3 +67,40 @@ class HyperClovaAdapter(BaseAdapter):
             input_tokens=usage.get("promptTokens") or result.get("inputLength"),
             output_tokens=usage.get("completionTokens") or result.get("outputLength"),
         )
+
+    # ── 스트리밍 (지연 프로브 전용) ──
+    #
+    # CLOVA Studio는 Accept 헤더로 스트리밍을 켠다. 페이로드에 stream 필드를
+    # 넣지 않는다는 점이 OpenAI 계열과 다르다.
+    #
+    # 주의할 것은 마지막 result 이벤트다. 거기 실린 message.content는 증분이
+    # 아니라 전문이다. token 이벤트에서 이미 모은 텍스트에 그것을 더하면
+    # 응답이 두 번 들어간다. 그래서 이벤트 이름으로 갈라야 하고, 이름을
+    # 못 읽었을 때는 더하지 않는 쪽으로 둔다.
+
+    def _stream_headers(self) -> dict:
+        headers = self._headers()
+        headers["Accept"] = "text/event-stream"
+        return headers
+
+    def _stream_payload(self, payload: dict) -> dict:
+        return payload
+
+    def _stream_event(self, event: str, obj: dict, acc: dict) -> str:
+        acc.setdefault("returned_model", self.spec.model)
+
+        if event == "result":
+            result = obj.get("result") or obj
+            usage = result.get("usage") or {}
+            acc["input_tokens"] = usage.get("promptTokens") or result.get("inputLength")
+            acc["output_tokens"] = usage.get("completionTokens") or result.get("outputLength")
+            return ""
+
+        if event != "token":
+            return ""
+
+        message = obj.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, list):
+            content = "".join(c.get("text", "") for c in content if isinstance(c, dict))
+        return content or ""

@@ -52,3 +52,39 @@ class AnthropicAdapter(BaseAdapter):
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
         )
+
+    # ── 스트리밍 (지연 프로브 전용) ──
+    #
+    # Messages API는 이벤트 이름으로 종류를 가른다. 토큰 수가 두 군데로
+    # 나뉘어 오는 것이 특징이다. 입력 토큰은 message_start에, 출력 토큰은
+    # 스트림이 끝날 때 message_delta에 실린다.
+
+    def _stream_event(self, event: str, obj: dict, acc: dict) -> str:
+        kind = obj.get("type") or event
+
+        if kind == "message_start":
+            msg = obj.get("message") or {}
+            if msg.get("model"):
+                acc["returned_model"] = msg["model"]
+            usage = msg.get("usage") or {}
+            if usage.get("input_tokens") is not None:
+                acc["input_tokens"] = usage["input_tokens"]
+            if usage.get("output_tokens") is not None:
+                acc["output_tokens"] = usage["output_tokens"]
+            return ""
+
+        if kind == "message_delta":
+            usage = obj.get("usage") or {}
+            if usage.get("output_tokens") is not None:
+                acc["output_tokens"] = usage["output_tokens"]
+            return ""
+
+        if kind == "content_block_delta":
+            delta = obj.get("delta") or {}
+            # thinking_delta는 텍스트가 아니다. 첫 텍스트가 도착한 시각을
+            # TTFT로 잡아야 하므로 여기서 가른다.
+            if delta.get("type") == "text_delta":
+                return delta.get("text") or ""
+            return ""
+
+        return ""

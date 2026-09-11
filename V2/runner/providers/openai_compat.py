@@ -73,3 +73,37 @@ class OpenAICompatAdapter(BaseAdapter):
             first_token_logprob=first_lp,
             top_logprobs=top,
         )
+
+    # ── 스트리밍 (지연 프로브 전용) ──
+
+    # usage를 스트림 끝에 붙여 달라는 옵션. OpenAI가 정의했고 호환
+    # 엔드포인트 대부분이 따라왔으나 전부는 아니다. 거부하는 프로바이더가
+    # 있으면 러너가 시작 점검에서 이 값을 False로 내리고 다시 시도한다.
+    # 그 경우 지연 프로브의 토큰 수가 비는데, 지연 지표는 TTFT와 총 소요시간이라
+    # 지장이 없다.
+    stream_usage = True
+
+    def _stream_payload(self, payload: dict) -> dict:
+        payload["stream"] = True
+        if self.stream_usage:
+            payload["stream_options"] = {"include_usage": True}
+        return payload
+
+    def _stream_event(self, event: str, obj: dict, acc: dict) -> str:
+        if obj.get("model"):
+            acc["returned_model"] = obj["model"]
+        if obj.get("system_fingerprint"):
+            acc["system_fingerprint"] = obj["system_fingerprint"]
+
+        usage = obj.get("usage")
+        if usage:
+            acc["input_tokens"] = usage.get("prompt_tokens")
+            acc["output_tokens"] = usage.get("completion_tokens")
+            details = usage.get("completion_tokens_details") or {}
+            acc["reasoning_tokens"] = details.get("reasoning_tokens")
+
+        choices = obj.get("choices") or []
+        if not choices:
+            return ""
+        delta = choices[0].get("delta") or {}
+        return delta.get("content") or ""

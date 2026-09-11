@@ -21,16 +21,26 @@ from providers import build_adapter
 class CallSpec:
     """한 콜이 무엇을 물어보는지."""
     model: ModelSpec
-    item: dict
-    mode: str = "direct"        # "direct" | "cot"
+    item: dict | None
+    mode: str = "direct"        # "direct" | "cot" | "latency"
     temperature: float = 0.0
     max_tokens: int = 8
     rep: int = 0
     phase: str = "calibration"
-    probe: str = "quality"
+    probe: str = "quality"      # "quality" | "latency"
     slot: str = ""
+    # 본실험에서만 채운다. 보정 패스는 슬롯 개념이 없어 비운다.
+    slot_index: int | None = None
+    item_group: int | None = None
+    condition: str = ""         # "peak" | "offpeak"
+    # 지연 프로브를 스트리밍으로 쏠 것인가. 시작 점검에서 스트리밍이
+    # 안 되는 것으로 판정된 모델은 False로 내려 비스트리밍으로 돈다.
+    # 그 경우 TTFT가 비고 총 소요시간만 남는다.
+    stream: bool = True
 
     def call_key(self) -> str:
+        if self.probe == "latency":
+            return f"{self.phase}|{self.slot}|{self.model.key}|latency|r{self.rep}"
         return (
             f"{self.phase}|{self.slot}|{self.model.key}|{self.item['item_id']}"
             f"|{self.mode}|t{self.temperature}|r{self.rep}"
@@ -38,18 +48,30 @@ class CallSpec:
 
 
 def execute_call(cs: CallSpec, adapter, run_id: str, vantage: str = "") -> CallRecord:
-    valid = prompts.letters_for(cs.item)
     nonce = prompts.make_nonce()
-    messages = prompts.build_messages(cs.item, cs.mode, nonce)
 
-    want_lp = cs.mode == "direct" and cs.model.supports_logprobs in ("yes", "unknown")
-    raw = adapter.chat(
-        messages,
-        temperature=cs.temperature,
-        max_tokens=cs.max_tokens,
-        want_logprobs=want_lp,
-        top_logprobs=TOP_LOGPROBS,
-    )
+    if cs.probe == "latency":
+        # 지연 프로브는 문항을 묻지 않는다. 재는 것은 대기와 생성 속도이므로
+        # 내용이 없는 고정 과제를 주고 출력 상한에 닿게 만든다(설계서 4.1절).
+        valid = []
+        messages = prompts.build_latency_messages(nonce)
+        if cs.stream:
+            raw = adapter.chat_stream(
+                messages, temperature=cs.temperature, max_tokens=cs.max_tokens)
+        else:
+            raw = adapter.chat(
+                messages, temperature=cs.temperature, max_tokens=cs.max_tokens)
+    else:
+        valid = prompts.letters_for(cs.item)
+        messages = prompts.build_messages(cs.item, cs.mode, nonce)
+        want_lp = cs.mode == "direct" and cs.model.supports_logprobs in ("yes", "unknown")
+        raw = adapter.chat(
+            messages,
+            temperature=cs.temperature,
+            max_tokens=cs.max_tokens,
+            want_logprobs=want_lp,
+            top_logprobs=TOP_LOGPROBS,
+        )
 
     rec = CallRecord(
         call_key=cs.call_key(),
@@ -58,6 +80,9 @@ def execute_call(cs: CallSpec, adapter, run_id: str, vantage: str = "") -> CallR
         probe=cs.probe,
         mode=cs.mode,
         slot=cs.slot,
+        slot_index=cs.slot_index,
+        item_group=cs.item_group,
+        condition=cs.condition or None,
         vantage=vantage,
         model_key=cs.model.key,
         provider=cs.model.provider,
@@ -65,8 +90,8 @@ def execute_call(cs: CallSpec, adapter, run_id: str, vantage: str = "") -> CallR
         returned_model=raw.returned_model,
         system_fingerprint=raw.system_fingerprint,
         endpoint_host=raw.endpoint_host,
-        item_id=cs.item["item_id"],
-        subject=cs.item.get("subject"),
+        item_id=cs.item["item_id"] if cs.item else None,
+        subject=cs.item.get("subject") if cs.item else None,
         rep=cs.rep,
         temperature=cs.temperature,
         max_tokens=cs.max_tokens,
@@ -75,7 +100,7 @@ def execute_call(cs: CallSpec, adapter, run_id: str, vantage: str = "") -> CallR
         retries=raw.retries,
         error=raw.error,
         raw_text=raw.text,
-        gold_letter=cs.item["answer"],
+        gold_letter=cs.item["answer"] if cs.item else None,
         ttft_ms=raw.ttft_ms,
         total_ms=raw.total_ms,
         input_tokens=raw.input_tokens,
@@ -85,7 +110,15 @@ def execute_call(cs: CallSpec, adapter, run_id: str, vantage: str = "") -> CallR
         request_id=raw.request_id,
     ).stamp()
 
-    if raw.error is None:
+    if raw.error is None and cs.probe == "latency":
+        # 지연 프로브는 채점하지 않는다. 출력 상한에 닿는 것이 정상이고,
+        # 상한에 닿지 않았다면 모델이 지시를 어기고 일찍 멈춘 것이므로
+        # 그 콜의 TPS는 다른 콜과 나란히 놓을 수 없다. 분석에서 거른다.
+        if raw.output_tokens and raw.total_ms:
+            gen_ms = raw.total_ms - (raw.ttft_ms or 0.0)
+            rec.tps = raw.output_tokens / (gen_ms / 1000.0) if gen_ms > 0 else None
+
+    elif raw.error is None:
         # 출력이 상한에 닿았으면 응답이 끊긴 것이다. 끊긴 자리의 마지막
         # 글자를 답으로 주워 오면 조용한 오답이 되므로 파서에 알린다.
         cut = (raw.output_tokens is not None and cs.max_tokens

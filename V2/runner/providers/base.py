@@ -11,6 +11,7 @@ SDK 대신 requests로 직접 친다. 상태코드·레이트리밋 헤더·requ
 
 from __future__ import annotations
 
+import json
 import random
 import threading
 import time
@@ -23,7 +24,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import MAX_RETRIES, RETRY_BASE_SLEEP, CONNECT_TIMEOUT, READ_TIMEOUT  # noqa: E402
+from config import (  # noqa: E402
+    CONNECT_TIMEOUT,
+    MAX_RETRIES,
+    READ_TIMEOUT,
+    RETRY_BASE_SLEEP,
+    STREAM_CHUNK_TIMEOUT,
+    STREAM_TOTAL_CAP,
+)
 
 
 @dataclass
@@ -177,3 +185,152 @@ class BaseAdapter:
             retries=MAX_RETRIES - 1,
             endpoint_host=host_of(url),
         )
+
+    # 스트리밍 실행부 ─────────────────────────────────────
+    #
+    # 지연 프로브 전용이다(설계서 4.1절). 비스트리밍 응답에서는 첫 토큰이
+    # 언제 왔는지 알 수 없어 TTFT가 비고, 남는 total_ms에는 생성 시간 전체가
+    # 섞인다. 부하의 증거로 쓰려면 대기와 생성을 갈라야 한다.
+    #
+    # 타임아웃을 둘로 나눈 이유는 2026-09-03에 확인한 것 때문이다. requests의
+    # read timeout은 총 소요시간이 아니라 바이트가 도착하지 않고 흐른 시간이라,
+    # 청크를 꾸준히 흘리는 프로바이더에서는 콜 길이를 전혀 제한하지 않는다.
+    # 21일 무인 실행에서 매달린 연결 하나가 워커를 붙잡으면 그 슬롯이 빈다.
+    # 그래서 청크 간 간격(STREAM_CHUNK_TIMEOUT)과 총 소요시간(STREAM_TOTAL_CAP)에
+    # 각각 상한을 건다.
+
+    def _stream_payload(self, payload: dict) -> dict:
+        """스트리밍용으로 페이로드를 고친다."""
+        payload["stream"] = True
+        return payload
+
+    def _stream_headers(self) -> dict:
+        return self._headers()
+
+    def _stream_event(self, event: str, obj: dict, acc: dict) -> str:
+        """SSE 이벤트 하나를 읽어 텍스트 증분을 돌려주고 부수 정보를 acc에 담는다.
+
+        acc에 모으는 것: returned_model, system_fingerprint, input_tokens,
+        output_tokens, reasoning_tokens. 하위 클래스가 채운다.
+        """
+        raise NotImplementedError
+
+    def chat_stream(
+        self,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+    ) -> RawResult:
+        url = self._endpoint()
+        payload = self._stream_payload(
+            self._payload(messages, temperature, max_tokens, False, 0))
+        last_error = None
+        status = None
+
+        for attempt in range(MAX_RETRIES):
+            self._wait_for_slot()
+            acc: dict = {}
+            chunks: list[str] = []
+            ttft_ms = None
+            t0 = time.perf_counter()
+            resp = None
+            try:
+                resp = self.session.post(
+                    url, headers=self._stream_headers(), json=payload, stream=True,
+                    timeout=(CONNECT_TIMEOUT, STREAM_CHUNK_TIMEOUT),
+                )
+                status = resp.status_code
+                if resp.status_code != 200:
+                    last_error = f"HTTP {resp.status_code}: {resp.text[:300]}"
+                    if resp.status_code not in RETRYABLE_STATUS:
+                        break
+                    raise _StreamRetry()
+
+                rl = collect_rate_limit(resp.headers)
+                rid = resp.headers.get("x-request-id") or resp.headers.get("request-id")
+                event = ""
+                data_lines: list[str] = []
+
+                for raw_line in resp.iter_lines(decode_unicode=True):
+                    if time.perf_counter() - t0 > STREAM_TOTAL_CAP:
+                        raise _StreamOverrun()
+
+                    if raw_line is None:
+                        continue
+                    line = raw_line.rstrip("\r")
+
+                    # 빈 줄이 이벤트의 끝이다. 모아 둔 data 줄을 여기서 넘긴다.
+                    if line == "":
+                        if data_lines:
+                            body = "\n".join(data_lines)
+                            data_lines = []
+                            name, event = event, ""
+                            if body.strip() == "[DONE]":
+                                break
+                            try:
+                                obj = json.loads(body)
+                            except json.JSONDecodeError:
+                                continue
+                            delta = self._stream_event(name, obj, acc)
+                            if delta:
+                                if ttft_ms is None:
+                                    ttft_ms = (time.perf_counter() - t0) * 1000
+                                chunks.append(delta)
+                        continue
+
+                    if line.startswith(":"):          # 주석(하트비트)
+                        continue
+                    field, _, value = line.partition(":")
+                    value = value[1:] if value.startswith(" ") else value
+                    if field == "event":
+                        event = value
+                    elif field == "data":
+                        data_lines.append(value)
+
+                total_ms = (time.perf_counter() - t0) * 1000
+                text = "".join(chunks)
+                return RawResult(
+                    text=text or None,
+                    returned_model=acc.get("returned_model"),
+                    system_fingerprint=acc.get("system_fingerprint"),
+                    input_tokens=acc.get("input_tokens"),
+                    output_tokens=acc.get("output_tokens"),
+                    reasoning_tokens=acc.get("reasoning_tokens"),
+                    http_status=200,
+                    retries=attempt,
+                    ttft_ms=ttft_ms,
+                    total_ms=total_ms,
+                    endpoint_host=host_of(url),
+                    request_id=rid,
+                    rate_limit=rl or None,
+                )
+            except _StreamOverrun:
+                last_error = f"StreamOverrun: total>{STREAM_TOTAL_CAP:.0f}s"
+            except _StreamRetry:
+                pass
+            except requests.Timeout as e:
+                last_error = f"{type(e).__name__}: chunk_gap={STREAM_CHUNK_TIMEOUT:.0f}s {e}"
+            except requests.RequestException as e:
+                last_error = f"{type(e).__name__}: {e}"
+            finally:
+                if resp is not None:
+                    resp.close()
+
+            if attempt < MAX_RETRIES - 1:
+                sleep = RETRY_BASE_SLEEP * (2 ** attempt) + random.uniform(0, 1)
+                time.sleep(sleep)
+
+        return RawResult(
+            error=last_error or "unknown stream error",
+            http_status=status,
+            retries=MAX_RETRIES - 1,
+            endpoint_host=host_of(url),
+        )
+
+
+class _StreamRetry(Exception):
+    """재시도 가능한 상태코드를 공통 경로로 보내기 위한 내부 신호."""
+
+
+class _StreamOverrun(Exception):
+    """청크는 오는데 끝나지 않는 연결. 총 소요시간 상한에 걸렸다."""

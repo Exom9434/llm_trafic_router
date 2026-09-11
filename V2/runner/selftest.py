@@ -10,11 +10,12 @@
 
 from __future__ import annotations
 
+import json
 import math
 import random
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import tempfile
 import uuid
 from pathlib import Path
@@ -476,6 +477,214 @@ if __name__ == "__main__":
     done = ledger.complete_days()
     check("완주한 날만 분석 대상", len(done) == 2 and all(d["status"] == "complete" for d in done))
     check("모델별 필터", len(ledger.complete_days("mock_strong")) == 1)
+
+    # ── 본실험 스케줄러 ──────────────────────────────────
+    print("\n[본실험 스케줄러]")
+
+    from datetime import date as _date, timedelta as _td
+    from config import (
+        ANCHOR_SLOT_HOURS_UTC, BANK_CYCLE, SLOT_HOURS_UTC,
+        condition_label, is_peak_slot, item_group, slot_index,
+    )
+    import experiment as exp
+
+    d0 = _date(2026, 10, 5)          # 월요일
+
+    # 사흘이면 모든 묶음이 여덟 시각을 정확히 한 번씩 통과해야 한다.
+    # 하루 슬롯 수 8과 묶음 주기 3이 서로소라서 생기는 성질이고,
+    # 이 설계의 조건 균형 전부가 여기에 얹혀 있다.
+    seen = {g: [] for g in range(BANK_CYCLE)}
+    for day_off in range(BANK_CYCLE):
+        for hour in SLOT_HOURS_UTC:
+            idx = slot_index(d0 + _td(days=day_off), hour, d0)
+            seen[item_group(idx)].append(hour)
+    check("사흘이면 묶음마다 여덟 시각을 한 번씩 통과",
+          all(sorted(v) == sorted(SLOT_HOURS_UTC) for v in seen.values()),
+          str({g: sorted(v) for g, v in seen.items()}))
+
+    # 반례: 카운터를 날마다 0으로 되돌리면 묶음0이 미국 피크를 못 만난다.
+    reset = {g: set() for g in range(BANK_CYCLE)}
+    for pos, hour in enumerate(SLOT_HOURS_UTC):
+        reset[pos % BANK_CYCLE].add(hour)
+    check("날마다 초기화하면 묶음0이 미국 피크(12·15)를 통과하지 못한다",
+          not (reset[0] & {12, 15}), str(sorted(reset[0])))
+
+    # 슬롯 번호는 달력에서 센다. 중단해서 하루를 통째로 건너뛰어도
+    # 같은 날 같은 시각은 같은 묶음을 받아야 한다.
+    check("하루를 건너뛰어도 묶음 배정이 안 밀린다",
+          item_group(slot_index(d0 + _td(days=7), 12, d0))
+          == item_group(slot_index(d0 + _td(days=7), 12, d0)))
+    check("슬롯 번호가 날을 넘겨 이어진다",
+          slot_index(d0 + _td(days=1), 0, d0) == len(SLOT_HOURS_UTC))
+
+    # 조건 라벨. 공표 구간 그대로여야 한다(설계서 3.2절).
+    mon, sat = _date(2026, 10, 5), _date(2026, 10, 10)
+    check("미국 피크는 평일 12·15시",
+          [h for h in SLOT_HOURS_UTC if is_peak_slot("us", h, mon)] == [12, 15])
+    check("미국은 주말의 같은 시각도 오프피크",
+          not any(is_peak_slot("us", h, sat) for h in SLOT_HOURS_UTC))
+    check("중국 피크는 03·06·09시",
+          [h for h in SLOT_HOURS_UTC if is_peak_slot("cn", h, sat)] == [3, 6, 9])
+    check("한국 피크는 00·06시",
+          [h for h in SLOT_HOURS_UTC if is_peak_slot("kr", h, sat)] == [0, 6])
+    check("라벨은 두 값뿐",
+          {condition_label(r, h, mon) for r in ("us", "cn", "kr")
+           for h in SLOT_HOURS_UTC} == {"peak", "offpeak"})
+
+    # 21 완주일에서 미국 팔의 피크 방문이 10.0회로 고정되는지.
+    # 완주일 21을 고른 근거가 이 값이다(설계서 7.4절).
+    for start_off in range(7):
+        start = d0 + _td(days=start_off)
+        hits = sum(1 for d in range(21) for h in SLOT_HOURS_UTC
+                   if is_peak_slot("us", h, start + _td(days=d)))
+        check(f"21일 미국 피크 슬롯 수가 시작 요일({start_off})과 무관",
+              hits / BANK_CYCLE == 10.0, f"{hits / BANK_CYCLE}")
+
+    # 앵커는 하루 4슬롯이고, 그 4슬롯이 조건마다 두 시각씩 갈려야 한다.
+    anc_pk = [h for h in ANCHOR_SLOT_HOURS_UTC if is_peak_slot("us", h, mon)]
+    anc_off = [h for h in ANCHOR_SLOT_HOURS_UTC if not is_peak_slot("us", h, mon)]
+    check("앵커는 조건당 시각이 둘 (교락 회피)",
+          len(anc_pk) == 2 and len(anc_off) == 2, f"{anc_pk} / {anc_off}")
+
+    # ── 슬롯 콜 조립 ─────────────────────────────────────
+    print("\n[슬롯 콜 조립]")
+
+    bank = [{"item_id": f"it{i:03d}", "subject": SUBJECTS[i % len(SUBJECTS)],
+             "question": f"q{i}", "options": ["a", "b", "c", "d"], "answer": "A"}
+            for i in range(MAIN_DESIGN["items_per_slot"] * BANK_CYCLE)]
+    bank_path = tmp / "item_bank.json"
+    bank_path.write_text(json.dumps(bank, ensure_ascii=False), encoding="utf-8")
+    groups = exp.load_groups(bank_path)
+    check("은행이 세 묶음으로 갈린다",
+          len(groups) == BANK_CYCLE
+          and all(len(g) == MAIN_DESIGN["items_per_slot"] for g in groups))
+    check("묶음끼리 문항이 겹치지 않는다",
+          len({i["item_id"] for g in groups for i in g}) == len(bank))
+    check("묶음 순서가 시드로 고정된다",
+          [i["item_id"] for i in exp.load_groups(bank_path)[0]]
+          == [i["item_id"] for i in groups[0]])
+
+    slot_dt = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
+    specs = exp.build_specs(MOCK_MODELS, slot_dt, d0, groups,
+                            {m.key: True for m in MOCK_MODELS}, set(), MAIN_DESIGN["k"])
+    per_model = MAIN_DESIGN["items_per_slot"] * MAIN_DESIGN["k"] + exp.LATENCY_REPS_PER_SLOT
+    check("슬롯 하나의 콜 수", len(specs) == per_model * len(MOCK_MODELS),
+          f"{len(specs)} vs {per_model * len(MOCK_MODELS)}")
+    check("콜 키가 전부 유일", len({cs.call_key() for cs in specs}) == len(specs))
+    check("지연 프로브가 앞에 온다 (우리 부하가 섞이기 전에 잰다)",
+          specs[0].probe == "latency")
+    check("조건 라벨이 콜마다 박힌다",
+          all(cs.condition in ("peak", "offpeak") for cs in specs))
+    check("슬롯 번호와 묶음이 콜마다 박힌다",
+          all(cs.slot_index is not None and cs.item_group is not None for cs in specs))
+    check("이미 끝난 콜은 다시 만들지 않는다",
+          exp.build_specs(MOCK_MODELS, slot_dt, d0, groups,
+                          {m.key: True for m in MOCK_MODELS},
+                          {cs.call_key() for cs in specs}, MAIN_DESIGN["k"]) == [])
+
+    lat = [cs for cs in specs if cs.probe == "latency"]
+    check("지연 프로브는 문항을 묻지 않는다", all(cs.item is None for cs in lat))
+    n1 = prompts.build_latency_messages(prompts.make_nonce())
+    n2 = prompts.build_latency_messages(prompts.make_nonce())
+    check("nonce가 달라도 프롬프트 길이는 같다",
+          len(n1[0]["content"]) == len(n2[0]["content"])
+          and n1[0]["content"] != n2[0]["content"])
+
+    # ── 스트리밍 파서 ────────────────────────────────────
+    print("\n[스트리밍 파서]")
+
+    class FakeResp:
+        def __init__(self, lines):
+            self.status_code = 200
+            self.headers = {}
+            self.text = ""
+            self._lines = lines
+
+        def iter_lines(self, decode_unicode=False):
+            for line in self._lines:
+                time.sleep(0.002)
+                yield line
+
+        def close(self):
+            pass
+
+    def fake_stream(adapter, lines):
+        adapter.session.post = lambda *a, **kw: FakeResp(lines)
+        return adapter.chat_stream([{"role": "user", "content": "x"}], 0.0, 64)
+
+    from providers import build_adapter as _build
+
+    oa = _build(ModelSpec(key="t", provider="t", model="m", adapter="openai_compat",
+                          api_key_env="MOCK"))
+    raw = fake_stream(oa, [
+        'data: {"model":"m-1","choices":[{"delta":{"content":"He"}}]}', "",
+        'data: {"choices":[{"delta":{"content":"llo"}}]}', "",
+        'data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":64,'
+        '"completion_tokens_details":{"reasoning_tokens":3}}}', "",
+        "data: [DONE]", "",
+    ])
+    check("openai 호환 스트림에서 텍스트를 모은다", raw.text == "Hello", str(raw.text))
+    check("openai 호환 스트림에서 TTFT를 잰다", raw.ttft_ms is not None)
+    check("openai 호환 스트림에서 토큰 수를 읽는다",
+          raw.output_tokens == 64 and raw.input_tokens == 11
+          and raw.reasoning_tokens == 3)
+    check("TTFT가 총 소요시간보다 작다", raw.ttft_ms < raw.total_ms)
+    check("반환 모델 문자열을 기록한다", raw.returned_model == "m-1")
+
+    an = _build(ModelSpec(key="t", provider="t", model="m", adapter="anthropic",
+                          api_key_env="MOCK"))
+    raw = fake_stream(an, [
+        "event: message_start",
+        'data: {"type":"message_start","message":{"model":"claude-x",'
+        '"usage":{"input_tokens":9,"output_tokens":1}}}', "",
+        "event: content_block_delta",
+        'data: {"type":"content_block_delta","delta":{"type":"thinking_delta",'
+        '"thinking":"hmm"}}', "",
+        "event: content_block_delta",
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta",'
+        '"text":"1 2"}}', "",
+        "event: message_delta",
+        'data: {"type":"message_delta","usage":{"output_tokens":64}}', "",
+    ])
+    check("anthropic 스트림에서 텍스트를 모은다", raw.text == "1 2", str(raw.text))
+    check("anthropic 스트림은 thinking을 텍스트로 세지 않는다",
+          raw.text is not None and "hmm" not in raw.text)
+    check("anthropic 스트림에서 출력 토큰이 최종값으로 갱신된다",
+          raw.output_tokens == 64 and raw.input_tokens == 9)
+
+    hc = _build(ModelSpec(key="t", provider="t", model="HCX", adapter="hyperclova",
+                          api_key_env="MOCK"))
+    raw = fake_stream(hc, [
+        "event: token", 'data: {"message":{"content":"1 "}}', "",
+        "event: token", 'data: {"message":{"content":"2"}}', "",
+        "event: result",
+        'data: {"message":{"content":"1 2"},"usage":{"promptTokens":7,'
+        '"completionTokens":64}}', "",
+    ])
+    check("clova 스트림에서 텍스트를 모은다", raw.text == "1 2", str(raw.text))
+    check("clova의 result 이벤트가 전문을 다시 더하지 않는다",
+          raw.text == "1 2" and raw.output_tokens == 64)
+
+    # ── 완주 판정 ────────────────────────────────────────
+    print("\n[완주 판정]")
+
+    led = DayLedger(tmp / "day_status_sched.jsonl")
+    already = set()
+    fired = {("mock_strong", "2026-10-05T%02d" % h) for h in SLOT_HOURS_UTC}
+    fired |= {("mock_mid", "2026-10-05T00"), ("mock_mid", "2026-10-05T03")}
+    exp.close_day(_date(2026, 10, 5), MOCK_MODELS, fired,
+                  {"mock_weak": (False, "예산 부족")}, led, already)
+    rows = {r["model_key"]: r for r in
+            [json.loads(x) for x in led.path.read_text(encoding="utf-8").splitlines() if x]}
+    check("여덟 슬롯을 채운 모델은 완주", rows["mock_strong"]["status"] == "complete")
+    check("일부만 돈 모델은 aborted", rows["mock_mid"]["status"] == "aborted",
+          rows["mock_mid"]["note"])
+    check("예산으로 못 시작한 모델은 not_started",
+          rows["mock_weak"]["status"] == "not_started")
+    before = len(led.path.read_text(encoding="utf-8").splitlines())
+    exp.close_day(_date(2026, 10, 5), MOCK_MODELS, fired, {}, led, already)
+    check("같은 날을 두 번 적지 않는다",
+          len(led.path.read_text(encoding="utf-8").splitlines()) == before)
 
     print()
     if _failures:
