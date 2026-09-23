@@ -295,6 +295,24 @@ class SpendGuard:
     def _account_spent(self, account: str) -> float:
         return sum(v for k, v in self.spent.items() if self.account.get(k) == account)
 
+    def set_balances(self, balances: dict[str, float | None]) -> None:
+        """잔액 파일을 다시 읽었을 때 바꿔 끼운다. 이미 멈춘 모델은 되살리지 않는다."""
+        with self._lock:
+            self.balances = {a: v for a, v in balances.items() if v is not None}
+
+    def days_left(self) -> dict[str, float]:
+        """계정마다 가용 잔액이 하루 예약 몇 번 치를 더 버티는가."""
+        out = {}
+        with self._lock:
+            for acct, bal in self.balances.items():
+                keys = [k for k, a in self.account.items()
+                        if a == acct and k not in self.stopped]
+                need = sum(self.reserves.get(k, 0.0) for k in keys)
+                if need:
+                    left = bal * BALANCE_USABLE_FRACTION - self._account_spent(acct)
+                    out[acct] = left / need
+        return out
+
     def usable_balance(self, account: str) -> float | None:
         bal = self.balances.get(account)
         return None if bal is None else bal * BALANCE_USABLE_FRACTION

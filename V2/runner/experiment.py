@@ -627,6 +627,17 @@ def main() -> None:
                     log(f"  {key} 완주일 {args.days}을 채웠다. 이 모델은 여기서 멈춘다.")
                 finished |= newly
 
+                # 잔액 파일을 날마다 다시 읽는다. 충전을 나눠 할 때 파일만 고쳐
+                # 올리면 재시작 없이 다음 날부터 반영된다. 값은 본실험 시작 뒤
+                # 충전한 총액(시작 잔액 + 추가 충전)이다.
+                try:
+                    guard.set_balances(load_balances())
+                except Exception as e:  # noqa: BLE001  못 읽으면 어제 값을 쓴다
+                    log(f"  잔액 파일을 다시 읽지 못했다 — {e}. 어제 값을 쓴다.")
+                for acct, d in sorted(guard.days_left().items()):
+                    if d < 3:
+                        log(f"  충전 필요: {acct} 가용 잔액이 하루 예약 {d:.1f}일치 남았다")
+
                 end = run_end_reason(models, finished, guard.stopped, current_day)
                 if end is None:
                     gate = guard.start_day([m.key for m in models if m.key not in finished])

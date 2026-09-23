@@ -5,9 +5,10 @@
   1. 완주한 날만 쓴다(day_status.jsonl의 complete).
   2. 시행 = 한 슬롯에서 한 문항에 대한 세 콜. 셋 중 하나라도 오류나 파싱
      실패면 시행 전체를 결측으로 둔다.
-  3. 시행 지표: 자기일관성(최빈 답의 몫), 정확도(정답 비율), 추론 토큰
-     (시행 평균의 자연로그).
-  4. 문항마다 피크 시행 평균에서 오프피크 시행 평균을 뺀다(단순 평균).
+  3. 시행 지표: 자기일관성(최빈 답의 몫), 추론 토큰(시행 평균의 자연로그).
+     정확도는 시행 단위가 아니라 문항·조건별로 파싱된 콜 가운데 정답 비율이다
+     (등록 Indices 칸). 파싱 실패 콜만 분모와 분자에서 빠진다.
+  4. 문항마다 피크 값에서 오프피크 값을 뺀다(시행 지표는 단순 평균).
   5. 주 검정은 차이 평균이 0인지 보는 양측 짝 t검정, 모델별 Holm 보정.
   6. 비열등성은 H0: 차이 평균 <= -마진에 대한 한쪽 t검정, 주 검정과 따로
      모델별 Holm 보정. 마진은 3.3절 탐지 목표치다.
@@ -116,9 +117,18 @@ def trials(records, done_days) -> dict:
     return out
 
 
+def by_rep(calls: list[dict]) -> dict:
+    """rep마다 콜 하나. 같은 rep가 두 번 적혔으면 답이 나온 쪽을 쓴다."""
+    reps: dict = {}
+    for c in calls:
+        if c["rep"] not in reps or (c.get("parsed_letter") and not c.get("error")):
+            reps[c["rep"]] = c
+    return reps
+
+
 def trial_metrics(calls: list[dict], k: int = 3) -> dict | None:
     """시행 하나의 지표. 세 콜이 모두 답을 내지 않았으면 None(결측)."""
-    reps = {c["rep"]: c for c in calls}          # 재시도로 같은 rep가 두 번 적혀도 하나로
+    reps = by_rep(calls)
     if len(reps) < k or any(c.get("error") or not c.get("parsed_letter") for c in reps.values()):
         return None
     cs = list(reps.values())
@@ -126,7 +136,6 @@ def trial_metrics(calls: list[dict], k: int = 3) -> dict | None:
     m = {
         "cond": cs[0]["condition"],
         "sc": Counter(letters).most_common(1)[0][1] / len(letters),
-        "acc": sum(c.get("correct") or 0 for c in cs) / len(cs),
     }
     rt = [c.get("reasoning_tokens") for c in cs]
     if all(v for v in rt):
@@ -137,7 +146,14 @@ def trial_metrics(calls: list[dict], k: int = 3) -> dict | None:
 def item_differences(tr: dict) -> dict:
     """(model, metric) → 문항별 차이 목록(피크 평균 − 오프피크 평균)."""
     by = defaultdict(lambda: {"peak": [], "offpeak": []})
+    acc = defaultdict(lambda: {"peak": [0, 0], "offpeak": [0, 0]})   # [정답, 파싱된 콜]
     for (model, _slot, item), calls in tr.items():
+        if "acc" in FAMILY.get(model, ()):
+            for c in by_rep(calls).values():
+                if c.get("parsed_letter") and not c.get("error"):
+                    cell = acc[(model, item)][c["condition"]]
+                    cell[0] += c.get("correct") or 0
+                    cell[1] += 1
         m = trial_metrics(calls)
         if m is None:
             continue
@@ -148,6 +164,9 @@ def item_differences(tr: dict) -> dict:
     for (model, metric, _item), v in by.items():
         if v["peak"] and v["offpeak"]:
             diffs[(model, metric)].append(statistics.fmean(v["peak"]) - statistics.fmean(v["offpeak"]))
+    for (model, _item), v in acc.items():
+        if v["peak"][1] and v["offpeak"][1]:
+            diffs[(model, "acc")].append(v["peak"][0] / v["peak"][1] - v["offpeak"][0] / v["offpeak"][1])
     return diffs
 
 
@@ -241,6 +260,8 @@ def _demo() -> None:
     tr = trials(recs, days)
     assert trial_metrics(tr[("openai_gpt56_luna", "2026-10-01T12", "q0")]) is None
     rows = {(r["model"], r["metric"]): r for r in analyse(item_differences(tr))}
+    # 파싱 실패 콜 하나: 자기일관성에서는 그 시행이 빠지지만 정확도에서는 그 콜만 빠진다
+    assert rows[("openai_gpt56_luna", "sc")]["n"] == 299 and rows[("openai_gpt56_luna", "acc")]["n"] == 300
     assert rows[("openai_gpt56_luna", "sc")]["decision"].startswith("저하"), rows[("openai_gpt56_luna", "sc")]
     assert rows[("anthropic_haiku", "sc")]["decision"] == "저하가 있더라도 마진 미만", rows[("anthropic_haiku", "sc")]
     assert rows[("openai_gpt56_sol", "sc")]["decision"] == "판단 불가", rows[("openai_gpt56_sol", "sc")]

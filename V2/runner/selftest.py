@@ -505,6 +505,12 @@ if __name__ == "__main__":
     g3 = SpendGuard(acc_plan, acc_models, {"ACC": 100.0})
     res3 = g3.start_day(["acc_budget", "acc_flag"])
     check("잔액이 넉넉하면 둘 다 시작", all(v[0] for v in res3.values()), str(res3))
+    g4 = SpendGuard(acc_plan, acc_models, {"ACC": 25.0 / _FRAC})
+    g4.spent["acc_budget"] = 5.0
+    check("남은 일수 = (가용 − 지출) / 하루 예약 합", abs(g4.days_left()["ACC"] - 1.0) < 1e-9,
+          str(g4.days_left()))
+    g4.set_balances({"ACC": 45.0 / _FRAC})
+    check("잔액 파일을 다시 읽으면 남은 일수가 늘어난다", abs(g4.days_left()["ACC"] - 2.0) < 1e-9)
     _bal = tmp / "provider_balance.json"
     _bal.write_text(json.dumps({"balances": {"A": 50, "B": {"krw": 5000}, "C": None}}),
                     encoding="utf-8")

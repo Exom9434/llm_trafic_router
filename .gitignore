@@ -43,3 +43,4 @@ V2/runner/outputs/calibration_calls_v1_badcaps.jsonl
 # 한글 문서 정본. 바이너리라 버전이 늘수록 저장소가 무거워진다.
 *.hwpx
 *.hwp
+V2/runner/provider_balance.json
