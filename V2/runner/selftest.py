@@ -478,6 +478,40 @@ if __name__ == "__main__":
     check("완주한 날만 분석 대상", len(done) == 2 and all(d["status"] == "complete" for d in done))
     check("모델별 필터", len(ledger.complete_days("mock_strong")) == 1)
 
+    # ── 계정 잔액 (2026-09-23) ──────────────────────────
+    print("\n[계정 잔액]")
+    from budget import load_balances
+    from config import BALANCE_USABLE_FRACTION as _FRAC, KRW_PER_USD as _KRW
+    acc_models = [
+        ModelSpec(key="acc_budget", provider="acc", model="b", adapter="openai_compat",
+                  api_key_env="ACC", tier="budget"),
+        ModelSpec(key="acc_flag", provider="acc", model="f", adapter="openai_compat",
+                  api_key_env="ACC", tier="flagship"),
+        ModelSpec(key="solo", provider="solo", model="s", adapter="openai_compat",
+                  api_key_env="SOLO"),
+    ]
+    acc_plan = {"models": {k: {"spend_cap": 1000.0, "day_reserve": 10.0}
+                           for k in ("acc_budget", "acc_flag", "solo")}}
+    g = SpendGuard(acc_plan, acc_models, {"ACC": 15.0 / _FRAC, "SOLO": None})
+    res = g.start_day(["acc_flag", "acc_budget", "solo"])
+    check("같은 계정은 잔액을 나눠 쓴다: 한 모델 몫만 남으면 주 측정군이 먼저",
+          res["acc_budget"][0] and not res["acc_flag"][0], str(res))
+    check("잔액 부족으로 못 시작한 모델은 정지로 남는다", "acc_flag" in g.stopped)
+    check("잔액 미설정 계정은 모델별 퓨즈만 본다", res["solo"][0])
+    g2 = SpendGuard(acc_plan, acc_models, {"ACC": 15.0 / _FRAC})
+    g2.spent["acc_flag"] = 6.0
+    ok2 = g2.start_day(["acc_budget"])["acc_budget"][0]
+    check("같은 계정 다른 모델의 지출도 잔액에서 뺀다", not ok2)
+    g3 = SpendGuard(acc_plan, acc_models, {"ACC": 100.0})
+    res3 = g3.start_day(["acc_budget", "acc_flag"])
+    check("잔액이 넉넉하면 둘 다 시작", all(v[0] for v in res3.values()), str(res3))
+    _bal = tmp / "provider_balance.json"
+    _bal.write_text(json.dumps({"balances": {"A": 50, "B": {"krw": 5000}, "C": None}}),
+                    encoding="utf-8")
+    lb = load_balances(_bal)
+    check("잔액 파일: 달러, 원화 환산, 후불 null",
+          lb["A"] == 50.0 and abs(lb["B"] - 5000 / _KRW) < 1e-9 and lb["C"] is None, str(lb))
+
     # ── 본실험 스케줄러 ──────────────────────────────────
     print("\n[본실험 스케줄러]")
 
@@ -686,6 +720,49 @@ if __name__ == "__main__":
     check("같은 날을 두 번 적지 않는다",
           len(led.path.read_text(encoding="utf-8").splitlines()) == before)
 
+    # 망 기준선 (사전등록 4.2절, 2026-09-23)
+    import netbase
+    from config import ALL_MODELS as _ALL, MAIN_DESIGN as _MD
+    _hosts = netbase.hosts_for([m for m in _ALL if m.key != "upstage_solar_pro3"])
+    check("망 기준선이 모든 모델의 호스트를 안다", len(_hosts) >= 6, str(sorted(_hosts)))
+    check("같은 호스트는 한 번만 잰다",
+          any(len(v) == 2 for v in _hosts.values()))
+    _fake = lambda h: {"ip": "1.2.3.4", "dns_ms": 1.0, "tcp_ms": 10.0, "tls_ms": 20.0,
+                       "tls_version": "TLSv1.3", "error": None}
+    _start = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)   # 월요일, 미국 피크
+    _rows = netbase.probe_slot(MOCK_MODELS, "2026-10-05T12", 36, _start, "r", "t",
+                               reps=3, measure=_fake)
+    check("호스트 수 × 반복 수만큼 기록", len(_rows) == 3)
+    check("반복을 바깥 고리에 둔다", [r["rep"] for r in _rows] == [0, 1, 2])
+    check("조건 라벨을 기록 시각에 박는다",
+          _rows[0]["conditions"]["mock_strong"] == "peak", str(_rows[0]["conditions"]))
+    _np = netbase.net_log_path(tmp / "main_calls.jsonl")
+    check("기준선 로그는 콜 로그 옆에 갈라진다", _np.name == "main_calls.net.jsonl")
+    netbase.append_rows(_np, _rows)
+    check("재시작 때 이미 잰 슬롯을 안다", netbase.logged_slots(_np) == {"2026-10-05T12"})
+    _err = netbase.measure_once("nonexistent.invalid", timeout=2.0)
+    check("연결 실패는 예외가 아니라 기록으로 남는다", _err["error"] is not None, _err["error"])
+
+    # 모델 단위 중단 (사전등록 3.4절, 2026-09-23)
+    check("완주일을 채운 모델만 멈춘다",
+          exp.finished_models({"a": 21, "b": 20, "c": 22}, 21) == {"a", "c"})
+    exp.close_day(_date(2026, 10, 6), MOCK_MODELS, set(), {}, led, already,
+                  skip={"mock_strong"})
+    rows6 = [json.loads(x) for x in led.path.read_text(encoding="utf-8").splitlines() if x]
+    check("완주로 멈춘 모델에는 날마다 not_started를 적지 않는다",
+          not any(r["model_key"] == "mock_strong" and r["day"] == "2026-10-06" for r in rows6))
+    _all = {m.key for m in MOCK_MODELS}
+    check("일부만 완주하면 실행은 계속",
+          exp.run_end_reason(MOCK_MODELS, {"mock_strong"}, {}, _date(2026, 10, 6)) is None)
+    check("전 모델 완주면 끝",
+          exp.run_end_reason(MOCK_MODELS, _all, {}, _date(2026, 10, 6)) is not None)
+    check("완주와 예산 정지의 조합이면 끝",
+          exp.run_end_reason(MOCK_MODELS, {"mock_strong", "mock_mid"},
+                             {"mock_weak": "잔액"}, _date(2026, 10, 6)) is not None)
+    check("10월 31일이 되면 끝",
+          exp.run_end_reason(MOCK_MODELS, set(), {}, _date(2026, 10, 31)) is not None
+          and exp.run_end_reason(MOCK_MODELS, set(), {}, _date(2026, 10, 30)) is None)
+
     print("\n[스트리밍 델타 파싱]")
 
     from providers.openai_compat import OpenAICompatAdapter as _OC
@@ -717,6 +794,14 @@ if __name__ == "__main__":
     _hp2 = _hp._stream_payload(_hp._payload([], 0.0, 64, False, 0))
     check("갈아 끼울 것이 없는 모델은 건드리지 않는다",
           _hp2.get(_h.max_tokens_param) == 64)
+
+    # 완주 종료 코드는 experiment.py와 systemd 유닛 두 곳에 적힌다. 한쪽만
+    # 고치면 완주 뒤 러너가 30초마다 되살아나는데, 그때는 아무도 안 보고 있다.
+    _unit = Path(__file__).resolve().parent.parent / "deploy" / "llm-experiment.service"
+    check("완주 종료 코드가 유닛과 맞는다",
+          f"RestartPreventExitStatus={exp.EXIT_COMPLETE}"
+          in _unit.read_text(encoding="utf-8"),
+          str(_unit))
 
     print()
     if _failures:

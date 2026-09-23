@@ -19,6 +19,10 @@ ExecStart=/home/ubuntu/llm_trafic_router/.venv/bin/python -u experiment.py --van
 # 읽어 이어가므로 같은 콜을 두 번 쏘지 않는다.
 Restart=always
 RestartSec=30
+# 21일을 채우고 정상으로 끝난 경우만 재시작에서 뺀다(experiment.EXIT_COMPLETE).
+# 이게 없으면 완주 뒤에도 30초마다 다시 떠서 스트리밍 점검 8콜을 쏘고 끝나기를
+# 무한히 반복한다. 아무도 안 보고 있을 시점이라 며칠 갈 수 있다.
+RestartPreventExitStatus=10
 
 # 램이 1GB라 재시도가 몰릴 때 OOM 킬러가 이 프로세스를 먼저 고를 수 있다.
 # 스왑이 있지만 우선순위도 낮춰 둔다.

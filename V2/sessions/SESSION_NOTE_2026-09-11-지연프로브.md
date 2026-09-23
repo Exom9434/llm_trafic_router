@@ -90,6 +90,148 @@ qwen의 `capabilities.json` 기록도 확인했다. `top_logprobs` 허용 범위
 
 스트리밍 가부도 여덟 전부 가능으로 확정되었으므로 지표 가용성 표에 반영한다.
 
+### 완주 뒤 헛돌이
+
+systemd 유닛 시험 절차를 짜다가 `Restart=always`와 러너의 정상 종료가 맞물리는 문제를 봤다. 21일을 채우고 러너가 0으로 끝나면 systemd가 30초 뒤 다시 띄우고, 다시 뜬 러너는 스트리밍 점검 8콜을 쏘고 완주를 확인하고 또 끝난다. 이것이 무한히 돈다. 실험이 끝난 시점이라 아무도 보고 있지 않다.
+
+`Restart=on-failure`로 바꾸는 것은 답이 아니다. 파이썬 미처리 예외도 1로 끝나므로 진짜 죽은 경우와 설정 오류가 한 덩어리가 된다. 완주 종료에만 코드 10을 주고 유닛에서 그 코드만 재시작에서 뺐다.
+
+`--max-slots`로 멈춘 경우와 중단 요청은 0 그대로 두었다. 사람이 부른 것이라 다시 떠도 된다.
+
+이 값이 `experiment.py`와 유닛 파일 두 곳에 적히므로 어긋나면 같은 헛돌이가 돌아온다. `selftest.py`가 두 값이 맞는지 확인한다.
+
+### systemd 시험
+
+네 항목 중 셋을 마쳤다.
+
+기동은 통과했다. 유닛이 ubuntu 권한으로 venv와 작업 디렉터리와 `.env`를 찾고 스트리밍 점검 여덟 줄을 냈다.
+
+재시작도 통과했다. SIGKILL로 죽인 뒤 30초 만에 restart counter 1로 되살아났다. 죽인 직후에 `MainPID`를 보면 0이 나오는데, 그것은 `RestartSec=30` 대기 중이라는 뜻이지 실패가 아니다.
+
+재개가 같은 콜을 두 번 쏘지 않는다는 것도 이번에 함께 확인했다. 원래 따로 돈을 들여 볼 항목이었다.
+
+```
+1차  콜 1,830회
+2차  이미 끝난 콜 125회 건너뜀 → 1,705회
+3차  이미 끝난 콜 796회 건너뜀 → 1,034회
+```
+
+죽은 자리에서 정확히 이어받았다. 남은 것은 재부팅 뒤 자동 기동뿐이다.
+
+리허설 슬롯 2026-09-11T06은 29.6분에 오류 0회로 완주했고 $1.05가 나갔다. 슬롯 간격이 3시간이므로 소요 시간에는 여유가 있다. 모델이 6개인 것은 정상이며, 티어 대조군 sol과 sonnet5는 00·03·12·15 UTC 슬롯에만 돈다.
+
+### 리허설이 남긴 것
+
+시험을 짜면서 두 가지를 놓쳤다가 실행 중에 알았다.
+
+`SLOT_CATCHUP_MINUTES`가 30이라 슬롯 시작 30분 안에 러너를 띄우면 그 슬롯을 바로 따라잡는다. 슬롯 직후가 안전한 창이라고 생각했는데 정반대였다. 배선만 보려면 슬롯 시작 30분 뒤부터 다음 슬롯 사이에 띄워야 한다.
+
+`--log`는 콜 로그만 바꾼다. `experiment_state.json`, `slot_status.jsonl`, `day_status.jsonl` 셋은 경로가 고정이라 리허설이 본실험 자리에 썼다. `day_status.jsonl`의 완주일을 `complete_day_counts`가 세므로 흔적이 남으면 본실험이 하루를 공짜로 얻는다. 본실행 직전에 옮기는 절차를 `deploy/README.md`에 적었다.
+
+### 본실험 착수 시점
+
+크레딧을 충전할 수 있는 시점에 맞춰 9월 16일이나 17일에 시작한다.
+
+서머타임은 문제가 없다. 16일에 시작하면 완주일 21에 여유 나흘을 더해 10월 11일에 끝나고, 미국 서머타임 종료일인 11월 1일보다 3주 앞선다. 실행 창 안에서 전환이 일어나지 않으므로 조건 라벨이 상수로 유지된다. 러너의 가드도 통과한다. 어제 노트가 10월 초 시작을 한계로 본 판단은 그대로 유효하고, 이번 일정은 그보다 이르다.
+
+착수 전에 반드시 끝내야 하는 것이 사전등록이다. 등록 전 측정과 등록 후 측정이 로그에서 갈려야 한다는 것이 이번 리허설에서 `--log`를 따로 준 이유이며, 등록을 마친 뒤 시작하는 실행이 `outputs/main_calls.jsonl`의 첫 줄이 되어야 한다.
+
+착수 직전 절차는 셋이다. 상태 파일 셋을 `rehearsal_state_backup/`으로 옮기고, 드롭인 `ExecStart` 덮어쓰기를 걷고, systemd 자동 기동을 다시 켠다. 상세는 `deploy/README.md`에 있다.
+
+### 제공사별 충전 금액
+
+`outputs/budget_plan.json`을 제공사 단위로 묶은 값이다. 투영은 보정 패스 실측 토큰으로 계산한 21일치 예상 지출이고, 상한은 러너의 지출 가드가 실행을 끊는 선이며 충전 목표가 아니다. 가드는 투영의 3배로 잡혀 있다.
+
+| 제공사 | 환경변수 | 투영 | 권장 충전 | 가드 상한 | 모델 |
+|---|---|---:|---:|---:|---|
+| Anthropic | `ANTHROPIC_API_KEY` | $80.22 | $105 | $240.65 | haiku, sonnet5 |
+| DeepSeek | `DEEPSEEK_API_KEY` | $65.87 | $86 | $197.60 | v4-flash |
+| OpenAI | `OPENAI_API_KEY` | $40.19 | $53 | $120.55 | luna, sol |
+| Alibaba | `DASHSCOPE_API_KEY` | $11.55 | $15 | $34.64 | qwen3.7-flash |
+| Google | `GOOGLE_API_KEY` | $4.56 | $6 | $13.68 | gemini-flash-lite |
+| Naver | `CLOVASTUDIO_API_KEY` | $2.76 | ₩5,000 | $8.27 | HCX dash |
+
+합계는 투영 $205.15, 권장 충전 $265 안팎이다. 권장액은 투영에 3할을 더한 값이며, 근거는 투영이 보정 패스의 평균 출력 토큰으로 계산된 값이라는 데 있다. 부하가 걸린 시간대에 모델이 더 길게 추론하면 실제 지출이 투영을 넘고, 그 초과가 바로 이 연구가 재려는 신호다. 지연 프로브 몫 $1.95도 여기 들어간다.
+
+Naver는 원화로 청구되고 부가세가 별도라 계획에서 단가에 1.1을 곱해 둔다. 환산은 config의 고정 환율 1,387원을 쓴다.
+
+넉넉히 부을 곳을 하나만 고른다면 DeepSeek이다. 추론을 끌 방법이 없고 콜당 출력이 1,326토큰으로 라인업에서 가장 크며, 피크와 오프피크 단가가 두 배 차이라 시간대에 따라 지출이 흔들린다.
+
+하루 예약은 전체 $12.21이다. 잔액이 그날 예약분에 못 미치면 러너가 그날을 시작하지 않고 그날은 분석에서 빠진다. 잔액이 아니라 완주일이 줄어드는 방식으로 손해가 난다.
+
+### 착수 명령 순서
+
+**하나. 크레딧 충전.** 위 표대로. 전부 끝난 뒤 다음으로 간다.
+
+**둘. 사전등록 제출.** 이게 끝나기 전에 러너를 띄우지 않는다. 등록 후 첫 실행이 `main_calls.jsonl`의 첫 줄이어야 한다.
+
+**셋. 코드 올리기 (맥).**
+
+```bash
+cd ~/Documents/문서\ -\ 노재경의\ MacBook\ Pro/GitHub/llm_trafic_router
+git status --short
+bash "V2/deploy/push.sh"
+```
+
+**넷. 리허설 흔적 걷기 (서버).**
+
+```bash
+cd ~/llm_trafic_router/V2/runner/outputs
+mkdir -p rehearsal_state_backup
+mv experiment_state.json slot_status.jsonl day_status.jsonl rehearsal_state_backup/
+
+sudo rm -r /etc/systemd/system/llm-experiment.service.d
+sudo systemctl daemon-reload
+```
+
+상태 파일을 안 옮기면 슬롯 번호의 기준점이 9월 11일로 남고 리허설 완주 판정이 본실험 일수에 섞인다. 드롭인을 안 걷으면 본실험이 리허설 로그에 계속 쓴다.
+
+**다섯. 배선 확인 (서버).**
+
+```bash
+cd ~/llm_trafic_router/V2/runner
+V=~/llm_trafic_router/.venv/bin/python
+$V check_env.py
+$V selftest.py
+$V experiment.py --dry-run
+```
+
+`--dry-run`에서 볼 것은 넷이다. 첫날이 오늘 날짜로 새로 잡혔는지, 첫 사흘 표에서 묶음 G0·G1·G2가 여덟 시각을 한 번씩 통과하는지, 조건 라벨 표에서 미국만 5/7이고 중국·한국이 7/7인지, 투영 비용이 상한 안인지다.
+
+**여섯. 서비스 올리기 (서버).**
+
+```bash
+sudo systemctl enable --now llm-experiment
+sudo systemctl enable --now llm-experiment-monitor.timer
+journalctl -u llm-experiment -f
+```
+
+띄우는 시각이 첫 슬롯을 정한다. 슬롯 시작 30분 안에 띄우면 그 슬롯부터 잡고, 지나서 띄우면 다음 슬롯부터다. 슬롯은 한국시간 09·12·15·18·21·24·03·06시다.
+
+**일곱. 날마다 볼 것.**
+
+```bash
+systemctl status llm-experiment
+~/llm_trafic_router/.venv/bin/python ~/llm_trafic_router/V2/runner/monitor.py --summary
+cat ~/llm_trafic_router/V2/runner/outputs/day_status.jsonl
+```
+
+완주일이 늘고 있는지가 핵심이다. 콜 수나 잔액이 아니라 완주일이 21에 닿아야 끝난다.
+
+**여덟. 로그 회수 (맥에서 날마다).**
+
+```bash
+rsync -avz -e "ssh -i ~/.ssh/lightsail-seoul.pem" \
+  ubuntu@3.34.88.19:~/llm_trafic_router/V2/runner/outputs/ \
+  "$HOME/Documents/문서 - 노재경의 MacBook Pro/GitHub/llm_trafic_router/V2/runner/outputs_server/"
+```
+
+로그가 300MB 안팎까지 자란다. 21일치를 마지막에 한 번 받다가 실패하면 되돌릴 방법이 없다.
+
+**아홉. 끝나면.** 러너가 완주하면 종료 코드 10으로 끝나고 systemd가 다시 띄우지 않는다. 서비스가 inactive이고 journal에 완주 메시지가 있으면 정상 종료다.
+
 ### 다음 할 일
 
-스케줄러 쪽은 어제 짜 두었으므로 systemd 유닛을 걸고 재시작 동작을 확인하는 일이 남았다. 실행 창은 서머타임을 피해 10월 초 시작이 한계라는 판단이 그대로다.
+재부팅 뒤 자동 기동 확인이 남았다. 돈이 들지 않으므로 슬롯 시작 30분 뒤부터 다음 슬롯 사이 아무 때나 하면 된다. 확인한 뒤에는 세우고 자동 기동도 꺼 둔다. 착수 시점에 다시 켠다.
+
+그다음은 사전등록이다.

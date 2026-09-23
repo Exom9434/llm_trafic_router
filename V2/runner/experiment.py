@@ -37,7 +37,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from budget import BUDGET_PLAN, DayLedger, SpendGuard
+from budget import BUDGET_PLAN, PROVIDER_BALANCE, DayLedger, SpendGuard, load_balances
 from calllog import JsonlLogger, load_done_keys
 from config import (
     ANCHOR_SLOT_HOURS_UTC,
@@ -49,7 +49,9 @@ from config import (
     LATENCY_REPS_PER_SLOT,
     LATENCY_TEMPERATURE,
     MAIN_DESIGN,
+    BALANCE_USABLE_FRACTION,
     OUTPUT_DIR,
+    RUN_STOP_DAY,
     SLOT_HOURS_UTC,
     US_DST_END,
     ModelSpec,
@@ -60,6 +62,7 @@ from config import (
     slot_index,
 )
 from core import CallSpec, run_batch
+import netbase
 from providers import build_adapter
 
 MAIN_LOG = OUTPUT_DIR / "main_calls.jsonl"
@@ -180,6 +183,15 @@ def slot_hours_for(model: ModelSpec) -> tuple:
 
 def planned_slots(model: ModelSpec) -> int:
     return len(slot_hours_for(model))
+
+
+# 더 돌릴 것이 없어 정상으로 끝났을 때의 종료 코드. 전 모델 완주, 완주와
+# 예산 정지의 조합, 중단일 도달이 여기 해당한다(2026-09-23). 다시 띄워도
+# 같은 판정으로 곧장 끝나므로 재시작할 이유가 없다. systemd가 이 코드만 재시작에서
+# 빼서, 21일이 끝난 뒤 러너가 30초마다 다시 떠 스트리밍 점검 8콜을 쏘는
+# 헛돌이를 막는다. 0을 쓰지 않는 것은 --max-slots로 멈춘 경우나 중단 요청과
+# 구별해야 하기 때문이다. 그 둘은 사람이 부른 것이라 다시 떠도 된다.
+EXIT_COMPLETE = 10
 
 
 def slot_starts(from_utc: datetime):
@@ -320,11 +332,15 @@ def logged_days(ledger: DayLedger) -> set[tuple[str, str]]:
 
 
 def close_day(day: date, models, fired: set, gate: dict, ledger: DayLedger,
-              already: set) -> None:
-    """하루가 끝났다. 모델마다 완주 여부를 적는다."""
+              already: set, skip=frozenset()) -> None:
+    """하루가 끝났다. 모델마다 완주 여부를 적는다.
+
+    skip은 이미 완주일을 채워 멈춘 모델이다. 그 모델에 날마다 not_started를
+    적으면 기록이 실제로 멈춘 이유를 가린다.
+    """
     key_day = day.isoformat()
     for m in models:
-        if (m.key, key_day) in already:
+        if (m.key, key_day) in already or m.key in skip:
             continue
         planned = planned_slots(m)
         done = sum(1 for (mk, slot) in fired
@@ -352,11 +368,62 @@ def complete_day_counts(ledger: DayLedger, models) -> dict[str, int]:
     return counts
 
 
+def finished_models(counts: dict[str, int], days: int) -> set[str]:
+    """목표 완주일을 채운 모델. 사전등록 3.4절에 따라 그 모델만 멈춘다.
+
+    전 모델이 채울 때까지 모두 돌리면, 하루를 잃은 모델을 기다리는 동안
+    나머지가 22일, 23일을 쌓는다. 21일은 묶음마다 각 시각을 정확히 7회,
+    요일마다 한 번씩 통과시키는 값이라(설계서 7.4절) 그 위로 붙는 날은
+    이 균형을 깨고 돈만 쓴다.
+    """
+    return {k for k, n in counts.items() if n >= days}
+
+
+def run_end_reason(models, finished: set, stopped, day: date) -> str | None:
+    """실행 전체를 끝낼 이유. 없으면 None.
+
+    사전등록 3.4절의 세 조건 가운데 완주와 예산은 모델 단위이고, 날짜는
+    전체에 한 번에 걸린다. 모든 모델이 완주했거나 예산으로 멈췄으면 더
+    돌릴 것이 없다.
+    """
+    if day >= RUN_STOP_DAY:
+        return f"중단일 {RUN_STOP_DAY}에 닿았다"
+    left = [m.key for m in models if m.key not in finished and m.key not in stopped]
+    if not left:
+        return "모든 모델이 완주일을 채웠거나 예산으로 멈췄다"
+    return None
+
+
+def describe_balances(models, plan: dict, balances: dict) -> list[str]:
+    """계정별 잔액과 21일 투영을 나란히 놓는다. 시작 로그와 dry-run이 쓴다."""
+    lines = []
+    by_acct: dict[str, list] = {}
+    for m in models:
+        by_acct.setdefault(m.api_key_env, []).append(m)
+    for acct, ms in sorted(by_acct.items()):
+        entries = [plan.get("models", {}).get(m.key) or {} for m in ms]
+        proj = sum(e.get("projected_total", 0.0) for e in entries)
+        reserve = sum(e.get("day_reserve", 0.0) for e in entries)
+        names = ", ".join(m.key for m in ms)
+        bal = balances.get(acct)
+        if bal is None:
+            lines.append(f"  {acct:22s} 잔액 미설정 (후불로 보고 모델별 퓨즈만 건다) "
+                         f"| 투영 ${proj:.2f} | {names}")
+            continue
+        usable = bal * BALANCE_USABLE_FRACTION
+        days = int(usable // reserve) if reserve else 0
+        flag = "" if usable >= proj else "  <- 21일 투영에 못 미친다"
+        lines.append(f"  {acct:22s} 잔액 ${bal:.2f} 가용 ${usable:.2f} | 투영 ${proj:.2f} "
+                     f"| 하루 예약 ${reserve:.2f}로 {days}일 | {names}{flag}")
+    return lines
+
+
 # ─────────────────────────────────────────────────────────────
 # dry-run
 # ─────────────────────────────────────────────────────────────
 
-def dry_run(models, groups, start_day: date, plan: dict, k: int) -> None:
+def dry_run(models, groups, start_day: date, plan: dict, k: int,
+            balances: dict | None = None) -> None:
     print(f"\n실행 첫날 {start_day} (UTC) 기준 일정\n")
     print(f"  은행 {sum(len(g) for g in groups)}문항 → 묶음 {BANK_CYCLE}개 "
           f"× {len(groups[0])}문항")
@@ -410,6 +477,20 @@ def dry_run(models, groups, start_day: date, plan: dict, k: int) -> None:
     print(f"\n  budget.py 투영 총액 ${plan.get('projected_grand_total', 0):,.2f} "
           f"— 지연 프로브는 그 투영에 없던 몫이다.")
 
+    print("\n  망 기준선 호스트 (슬롯마다 호스트당 "
+          f"{netbase.NET_REPS_PER_SLOT}회, DNS·TCP·TLS)\n")
+    for host, ms in netbase.hosts_for(models).items():
+        print(f"  {host:45s} {', '.join(m.key for m in ms)}")
+
+    print("\n  계정별 선불 잔액 (provider_balance.json)\n")
+    if balances is None:
+        print(f"  {PROVIDER_BALANCE.name}이 없다. 본실행은 이 파일 없이 시작하지 않는다.")
+    else:
+        for line in describe_balances(models, plan, balances):
+            print(line)
+        print(f"\n     가용은 잔액의 {BALANCE_USABLE_FRACTION:.0%}다. 하루 예약이 가용을 넘는 "
+              "날부터 그 모델은 시작하지 않는다.")
+
 
 # ─────────────────────────────────────────────────────────────
 # 본체
@@ -452,9 +533,18 @@ def main() -> None:
     state = load_state(now.date())
     start_day = date.fromisoformat(state["start_day"])
 
+    try:
+        balances = load_balances()
+    except FileNotFoundError:
+        balances = None
+
     if args.dry_run:
-        dry_run(models, groups, start_day, plan, args.k)
+        dry_run(models, groups, start_day, plan, args.k, balances)
         return
+
+    if balances is None:
+        sys.exit(f"선불 잔액 파일이 없다: {PROVIDER_BALANCE}\n"
+                 "계정마다 본실험 시작 시점의 잔액을 적는다. 후불 계정은 null.")
 
     # 서머타임이 끝나면 미국 피크가 UTC 13~19로 밀려 슬롯 분류가 상수가
     # 아니게 된다. 사전등록이 상수를 전제하므로 여기서 막는다.
@@ -468,12 +558,14 @@ def main() -> None:
         )
 
     log_path = Path(args.log) if args.log else MAIN_LOG
+    net_path = netbase.net_log_path(log_path)
+    net_done = netbase.logged_slots(net_path)
     done = load_done_keys(log_path)
     fired = load_slot_status()
     ledger = DayLedger()
     already = logged_days(ledger)
 
-    guard = SpendGuard(plan)
+    guard = SpendGuard(plan, models, balances)
     guard.load_spent(log_path, models)
     by_key = {m.key: m for m in models}
 
@@ -482,6 +574,9 @@ def main() -> None:
     log(f"모델 {len(models)}개: {', '.join(m.key for m in models)}")
     if done:
         log(f"이미 끝난 콜 {len(done):,}회를 로그에서 읽었다. 그만큼 건너뛴다.")
+    log("계정별 선불 잔액")
+    for line in describe_balances(models, plan, balances):
+        log(line)
 
     log("스트리밍 점검")
     stream_ok = probe_streaming(models)
@@ -489,9 +584,10 @@ def main() -> None:
     # 지난 날 중 아직 판정이 없는 것을 먼저 적는다. 재시작이 날을 건너뛰면
     # 그 날은 루프의 날 경계 처리를 못 만나기 때문이다.
     today = datetime.now(timezone.utc).date()
+    finished = finished_models(complete_day_counts(ledger, models), args.days)
     day = start_day
     while day < today:
-        close_day(day, models, fired, {}, ledger, already)
+        close_day(day, models, fired, {}, ledger, already, skip=finished)
         day += timedelta(days=1)
 
     counts = complete_day_counts(ledger, models)
@@ -499,6 +595,7 @@ def main() -> None:
         log("완주일: " + ", ".join(f"{k} {v}" for k, v in counts.items() if v))
 
     logger = JsonlLogger(log_path)
+    completed = False
     current_day: date | None = None
     gate: dict[str, tuple[bool, str]] = {}
     n_slots = 0
@@ -509,20 +606,34 @@ def main() -> None:
                 log(f"--max-slots {args.max_slots} 에 도달했다. 멈춘다.")
                 break
 
-            counts = complete_day_counts(ledger, models)
-            if counts and min(counts.values()) >= args.days:
-                log(f"모든 모델이 완주일 {args.days}을 채웠다. 끝낸다.")
-                break
-
-            # 날이 바뀌었다. 지난 날을 판정하고 새 날의 예산을 예약한다.
+            # 날이 바뀌었다. 지난 날을 판정하고, 완주한 모델을 빼고, 새 날의
+            # 예산을 예약한다. 완주 판정은 날 경계에서만 바뀌므로 모델이
+            # 멈추는 자리도 언제나 날 경계다.
             if start.date() != current_day:
                 if current_day is not None:
-                    close_day(current_day, models, fired, gate, ledger, already)
+                    close_day(current_day, models, fired, gate, ledger, already,
+                              skip=finished)
                 current_day = start.date()
-                gate = {m.key: guard.can_start_day(m.key) for m in models}
+
+                counts = complete_day_counts(ledger, models)
+                newly = finished_models(counts, args.days) - finished
+                for key in sorted(newly):
+                    log(f"  {key} 완주일 {args.days}을 채웠다. 이 모델은 여기서 멈춘다.")
+                finished |= newly
+
+                end = run_end_reason(models, finished, guard.stopped, current_day)
+                if end is None:
+                    gate = guard.start_day([m.key for m in models if m.key not in finished])
+                    end = run_end_reason(models, finished, guard.stopped, current_day)
+                if end:
+                    log(f"{end}. 끝낸다.")
+                    completed = True
+                    break
+
                 blocked = [k for k, (ok, _) in gate.items() if not ok]
                 log(f"── {current_day} 시작. " +
-                    (f"예산으로 제외: {', '.join(blocked)}" if blocked else "전 모델 진행"))
+                    (f"예산으로 제외: {', '.join(blocked)}" if blocked else "전 모델 진행") +
+                    (f" | 완주로 멈춤: {', '.join(sorted(finished))}" if finished else ""))
 
             late = (datetime.now(timezone.utc) - start).total_seconds() / 60
             if late > SLOT_CATCHUP_MINUTES:
@@ -532,7 +643,8 @@ def main() -> None:
                 wait_until(start)
 
             active = [m for m in models
-                      if gate.get(m.key, (True, ""))[0]
+                      if m.key not in finished
+                      and gate.get(m.key, (True, ""))[0]
                       and m.key not in guard.stopped
                       and start.hour in slot_hours_for(m)]
             if not active:
@@ -549,6 +661,23 @@ def main() -> None:
             idx = slot_index(start.date(), start.hour, start_day)
             log(f"슬롯 {slot_label(start)} (#{idx}, 묶음 G{item_group(idx)}) — "
                 f"모델 {len(active)}개, 콜 {len(specs):,}회")
+
+            # 네트워크 기준선을 지연 프로브 바로 앞에 잰다. 품질 콜이 밀려들기
+            # 전이라 우리 콜이 만든 혼잡이 섞이지 않는다. 기준선이 실패해도
+            # 슬롯은 돈다. 완주 판정의 조건이 아니다.
+            label_now = slot_label(start)
+            if label_now not in net_done:
+                try:
+                    rows = netbase.probe_slot(active, label_now, idx, start,
+                                              state["run_id"], args.vantage)
+                    netbase.append_rows(net_path, rows)
+                    net_done.add(label_now)
+                    bad = sum(1 for r in rows if r["error"])
+                    tcp = sorted(r["tcp_ms"] for r in rows if r["tcp_ms"] is not None)
+                    med = f"{tcp[len(tcp) // 2]:.0f}ms" if tcp else "없음"
+                    log(f"  망 기준선 {len(rows)}회, 실패 {bad}회, TCP 중앙값 {med}")
+                except Exception as e:  # noqa: BLE001
+                    log(f"  망 기준선 실패 — {type(e).__name__}: {e}")
 
             tally = {m.key: [0, 0] for m in active}
 
@@ -601,6 +730,9 @@ def main() -> None:
     log("완주일")
     for key, n in sorted(counts.items()):
         log(f"  {key:28s} {n}일")
+
+    if completed:
+        sys.exit(EXIT_COMPLETE)
 
 
 if __name__ == "__main__":

@@ -135,6 +135,38 @@ $V experiment.py --max-slots 1 --log outputs/rehearsal_calls.jsonl
 등록을 마친 뒤에 시작하는 실행이 `outputs/main_calls.jsonl`의 첫 줄이
 된다. 리허설 파일은 배선 확인의 기록으로 남겨 두고 분석에 넣지 않는다.
 
+리허설을 띄우는 시각도 골라야 한다. `SLOT_CATCHUP_MINUTES`가 30이라 슬롯
+시작 30분 안에 뜨면 러너가 그 슬롯을 놓친 것으로 보고 바로 따라잡는다.
+슬롯을 발사하지 않고 배선만 보려면 슬롯 시작 30분 뒤부터 다음 슬롯 사이에
+띄운다. 슬롯은 09·12·15·18·21·24·03·06시(한국시간)다.
+
+**`--log`는 콜 로그만 바꾼다.** 상태 파일 셋은 경로가 고정이라 리허설이
+본실험 자리에 쓴다.
+
+```
+outputs/experiment_state.json   슬롯 번호의 기준점 (start_day, run_id)
+outputs/slot_status.jsonl       발사한 (모델, 슬롯) 쌍
+outputs/day_status.jsonl        날짜별 완주 판정
+```
+
+`day_status.jsonl`이 특히 문제다. 여기 적힌 완주일을 `complete_day_counts`가
+세고, 그것이 21일을 채웠는지 판단하는 근거다. 리허설 흔적이 남으면 본실험이
+하루를 공짜로 얻는다. 본실행 직전에 서버와 로컬 양쪽에서 옮겨 둔다.
+
+```bash
+cd ~/llm_trafic_router/V2/runner/outputs
+mkdir -p rehearsal_state_backup
+mv experiment_state.json slot_status.jsonl day_status.jsonl rehearsal_state_backup/
+```
+
+지우지 않고 옮기는 것은 리허설 기록도 배선 확인의 증거여서다. 드롭인으로
+`ExecStart`를 덮어 두었다면 그것도 같이 걷는다.
+
+```bash
+sudo rm -r /etc/systemd/system/llm-experiment.service.d
+sudo systemctl daemon-reload
+```
+
 마지막으로 서비스로 올린다.
 
 ```bash
