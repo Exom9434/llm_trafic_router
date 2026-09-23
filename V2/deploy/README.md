@@ -89,6 +89,73 @@ cd ~/llm_trafic_router/V2/runner
 결과가 로컬의 `outputs/smoke_test.md`와 어긋나는 항목이 있으면 그것이
 측정 지점 이동의 효과다. 기록해 두고 사전등록 본문에 반영한다.
 
+## 코드를 고친 뒤 서버에서 확인하기
+
+로컬에서 러너를 고쳤으면 서버에 올리고 아래 순서로 확인한다. API 콜을
+쏘지 않으므로 돈이 들지 않고, 슬롯 시각과 무관하게 아무 때나 해도 된다.
+2026-09-23에 넣은 모델 단위 중단, 선불 잔액 가드, 망 기준선을 처음 올릴
+때도 이 절차를 쓴다.
+
+맥 터미널에서 코드를 올린다.
+
+```bash
+cd "/Users/nojaegyeong/Documents/문서 - 노재경의 MacBook Pro/GitHub/llm_trafic_router"
+bash V2/deploy/push.sh
+```
+
+`push.sh`는 `V2/runner/` 전체(새 파일 `netbase.py`, `provider_balance.json`
+포함)와 `V2/deploy/`, `.env`, `outputs/budget_plan.json`을 올린다.
+`outputs/`의 다른 파일은 건드리지 않는다.
+
+서버에 들어간다.
+
+```bash
+ssh -i ~/.ssh/lightsail-seoul.pem ubuntu@3.34.88.19
+```
+
+서버에서 세 가지를 돌린다.
+
+```bash
+cd ~/llm_trafic_router/V2/runner
+V=~/llm_trafic_router/.venv/bin/python
+
+$V netbase.py
+$V selftest.py
+$V experiment.py --dry-run
+```
+
+`netbase.py`는 여섯 호스트에 연결을 5번씩 열어 보고 결과만 화면에 찍는다.
+로그에는 쓰지 않는다. 정상이면 이렇게 여섯 줄이 나온다.
+
+```
+api.openai.com                           TCP    ...ms  TLS    ...ms  DNS  ...ms  <IP>  (5/5)
+generativelanguage.googleapis.com        ...
+api.deepseek.com                         ...
+dashscope-us.aliyuncs.com                ...
+api.anthropic.com                        ...
+clovastudio.stream.ntruss.com            ...
+```
+
+한 줄이라도 실패로 나오거나 괄호 안이 5/5가 아니면 본실험 전에 원인을
+본다. 아직 서버에서 잰 적이 없으므로 처음 나온 값과 IP를 기록해 둔다.
+
+미국 호스트라도 TCP 값이 몇 ms로 작게 나올 수 있다. OpenAI, Anthropic,
+Google은 서울에 CDN 앞단을 두고 있어 연결이 그 앞단에서 끝나기 때문이다.
+그 경우 이 기준선은 서버에서 앞단까지의 구간만 재고, 앞단에서 제공사 원
+서버까지의 해외 구간은 TTFT 안에 남는다. 값이 작게 나오면 세션 노트에
+적고 사전등록 업데이트의 한계 서술에 반영한다.
+
+`selftest.py`는 마지막 줄이 `전부 통과.`여야 한다.
+
+`--dry-run`에서는 기존 항목(묶음 순환, 조건 라벨, 콜 수와 비용)에 더해 두
+구역을 본다. 망 기준선 호스트 목록에 호스트 여섯이 모델과 함께 나오는지,
+계정별 선불 잔액 표가 `provider_balance.json`에 적은 값을 그대로 읽는지다.
+잔액을 아직 안 적었으면 전부 잔액 미설정으로 나온다. 적은 뒤에는 21일 투영에
+못 미친다는 표시가 붙은 계정이 없어야 한다.
+
+dry-run은 `outputs/experiment_state.json`을 만들지 않는다(2026-09-23 수정).
+예전에는 파일이 없으면 dry-run이 그날을 본실험 첫날로 박아 버렸다.
+
 ## 본실험 띄우기
 
 스모크 테스트가 통과하면 순서는 이렇다.

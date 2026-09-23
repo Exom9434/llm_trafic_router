@@ -120,8 +120,12 @@ def load_groups(bank_path: Path | None = None) -> list[list[dict]]:
 # 상태
 # ─────────────────────────────────────────────────────────────
 
-def load_state(start_day: date | None = None) -> dict:
-    """실행 첫날과 run_id. 슬롯 번호의 기준점이라 한 번 정하면 안 바꾼다."""
+def load_state(start_day: date | None = None, persist: bool = True) -> dict:
+    """실행 첫날과 run_id. 슬롯 번호의 기준점이라 한 번 정하면 안 바꾼다.
+
+    persist=False면 파일이 없어도 만들지 않는다. dry-run이 이 파일을 만들면
+    그날이 본실험 첫날로 굳어 버린다(2026-09-23).
+    """
     if STATE_FILE.exists():
         state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         return state
@@ -130,6 +134,8 @@ def load_state(start_day: date | None = None) -> dict:
         "run_id": uuid.uuid4().hex[:12],
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
+    if not persist:
+        return state
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     return state
@@ -530,7 +536,7 @@ def main() -> None:
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
     now = datetime.now(timezone.utc)
-    state = load_state(now.date())
+    state = load_state(now.date(), persist=not args.dry_run)
     start_day = date.fromisoformat(state["start_day"])
 
     try:

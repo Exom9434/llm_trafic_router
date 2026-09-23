@@ -57,6 +57,10 @@ selftest에 계정 잔액 6건, 모델 단위 중단 6건을 더했고 전부 �
 
 selftest에 8건을 더했고 통과했다. 로컬 VM은 외부 이름 풀이가 막혀 실제 연결 값은 확인하지 못했다. 서버에 올린 뒤 `python netbase.py`로 여섯 호스트의 값이 나오는지 본다.
 
+한계가 하나 있다. OpenAI, Anthropic, Google은 서울에 CDN 앞단을 둘 가능성이 커서, 그 경우 TCP 연결은 앞단에서 끝나고 기준선은 서버에서 앞단까지만 잰다. 앞단에서 원 서버까지의 해외 구간은 TTFT 안에 남는다. 서버에서 첫 값을 보고 판단한다. 값이 몇 ms로 나오면 업데이트의 한계 서술에 이 구간을 명시한다.
+
+dry-run이 상태 파일이 없을 때 `experiment_state.json`을 만들어 그날을 본실험 첫날로 박던 것을 고쳤다. `load_state(persist=False)`로 부른다. 서버 확인 절차는 `deploy/README.md`의 코드를 고친 뒤 서버에서 확인하기 절에 적었다.
+
 업데이트 본문에는 4.2절과 5.1절의 ping and connect baselines를 이 정의(DNS, TCP 연결, TLS 핸드셰이크, 슬롯당 호스트별 5회)로 적는다.
 
 ### 미결
