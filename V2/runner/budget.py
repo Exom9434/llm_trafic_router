@@ -36,6 +36,8 @@ from pathlib import Path
 from calllog import read_records
 from config import (
     ANCHOR_DESIGN,
+    BALANCE_USABLE_FRACTION,
+    KRW_PER_USD,
     DAY_RESERVE_MARGIN,
     DATA_DIR,
     MAIN_DESIGN,
@@ -50,6 +52,10 @@ CALIBRATION_LOG = OUTPUT_DIR / "calibration_calls.jsonl"
 ITEM_BANK = DATA_DIR / "item_bank.json"
 BUDGET_PLAN = OUTPUT_DIR / "budget_plan.json"
 DAY_STATUS_LOG = OUTPUT_DIR / "day_status.jsonl"
+
+# 계정(API 키)별 선불 잔액. 코드와 함께 서버로 올라가야 하므로 outputs가
+# 아니라 러너 디렉터리에 둔다(push.sh가 outputs를 제외한다).
+PROVIDER_BALANCE = Path(__file__).resolve().parent / "provider_balance.json"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -228,6 +234,30 @@ def project(models: list[ModelSpec], profiles: dict[str, TokenProfile],
 # 3. 지출 가드
 # ─────────────────────────────────────────────────────────────
 
+def load_balances(path: Path | None = None) -> dict[str, float | None]:
+    """provider_balance.json을 읽어 계정별 선불 잔액(USD)을 준다.
+
+    값은 본실험 시작 시점의 잔액이다. 가드는 본실험 로그의 지출만 더하므로
+    리허설이나 보정에 쓴 돈은 이미 빠진 금액을 적어야 한다. null은 선불
+    잔액이 없는 계정(후불)이며 모델별 퓨즈만 걸린다. 원화는 {"krw": 5000}
+    으로 적으면 고정 환율로 바꾼다. 부가세가 붙는 계정은 부가세 포함
+    금액을 적는다. 가드의 지출 추정이 부가세를 곱하기 때문이다.
+    """
+    p = Path(path or PROVIDER_BALANCE)
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    out: dict[str, float | None] = {}
+    for acct, v in (raw.get("balances") or {}).items():
+        if v is None:
+            out[acct] = None
+        elif isinstance(v, dict) and "krw" in v:
+            out[acct] = float(v["krw"]) / KRW_PER_USD
+        elif isinstance(v, dict) and "usd" in v:
+            out[acct] = float(v["usd"])
+        else:
+            out[acct] = float(v)
+    return out
+
+
 class SpendGuard:
     """모델별로 독립적으로 예산을 지킨다.
 
@@ -235,7 +265,8 @@ class SpendGuard:
     결과는 온전하다. 그래서 정지는 언제나 모델 단위다.
     """
 
-    def __init__(self, plan: dict):
+    def __init__(self, plan: dict, models: list[ModelSpec] | None = None,
+                 balances: dict[str, float | None] | None = None):
         self.caps: dict[str, float] = {}
         self.reserves: dict[str, float] = {}
         for key, entry in plan.get("models", {}).items():
@@ -244,6 +275,29 @@ class SpendGuard:
         self.spent: dict[str, float] = {k: 0.0 for k in self.caps}
         self.stopped: dict[str, str] = {}          # model_key → 정지 사유
         self._lock = threading.Lock()
+
+        # 계정 단위 선불 잔액 (2026-09-23).
+        #
+        # 모델별 상한(투영의 3배)은 고장을 끊는 퓨즈라 정상 운영에서는 걸리지
+        # 않는다. 실제로 실험을 끊는 것은 제공사 선불 잔액이고, 그건 날
+        # 경계가 아니라 하루 중간에 바닥난다. 가드가 잔액을 알아야 절단을
+        # 날 경계로 끌어올 수 있다. 같은 키를 쓰는 모델(haiku와 sonnet5,
+        # luna와 sol)은 잔액 하나를 나눠 쓰므로 계정 단위로 센다.
+        self.account: dict[str, str] = {}
+        self.priority: dict[str, int] = {}
+        for m in models or []:
+            self.account[m.key] = m.api_key_env
+            # 잔액이 한 모델 몫밖에 안 남으면 주 측정군을 먼저 돌린다.
+            self.priority[m.key] = 1 if m.tier == "flagship" else 0
+        self.balances: dict[str, float] = {
+            a: v for a, v in (balances or {}).items() if v is not None}
+
+    def _account_spent(self, account: str) -> float:
+        return sum(v for k, v in self.spent.items() if self.account.get(k) == account)
+
+    def usable_balance(self, account: str) -> float | None:
+        bal = self.balances.get(account)
+        return None if bal is None else bal * BALANCE_USABLE_FRACTION
 
     # ── 누적 ──
     def load_spent(self, log_path: Path, models: list[ModelSpec]) -> None:
@@ -289,6 +343,37 @@ class SpendGuard:
                 self.stopped[model_key] = reason
                 return False, reason
             return True, f"잔여 ${cap - spent:.2f}"
+
+    def start_day(self, model_keys) -> dict[str, tuple[bool, str]]:
+        """그날 돌릴 모델들을 한꺼번에 판정한다.
+
+        모델별 상한을 먼저 보고, 계정에 선불 잔액이 적혀 있으면 그 계정의
+        누적 지출과 그날 이미 예약한 몫에 이 모델의 하루 예약을 더해 가용
+        잔액을 넘는지 본다. 넘으면 그 모델은 그날부터 멈춘다. 잔액이
+        다시 늘 일이 없으므로 정지는 되돌리지 않는다. 한 계정의 모델끼리는
+        주 측정군이 대조군보다 먼저 예약한다.
+        """
+        out: dict[str, tuple[bool, str]] = {}
+        reserved: dict[str, float] = {}
+        for key in sorted(model_keys, key=lambda k: (self.priority.get(k, 0), k)):
+            ok, reason = self.can_start_day(key)
+            acct = self.account.get(key)
+            usable = self.usable_balance(acct) if acct else None
+            if not ok or usable is None:
+                out[key] = (ok, reason)
+                continue
+            with self._lock:
+                used = self._account_spent(acct) + reserved.get(acct, 0.0)
+                need = self.reserves.get(key, 0.0)
+                if used + need > usable:
+                    why = (f"계정 잔액 부족 ({acct}: 사용·예약 ${used:.2f} + "
+                           f"예약 ${need:.2f} > 가용 ${usable:.2f})")
+                    self.stopped[key] = why
+                    out[key] = (False, why)
+                    continue
+                reserved[acct] = reserved.get(acct, 0.0) + need
+            out[key] = (True, f"{reason}, 계정 가용 ${usable - used - need:.2f}")
+        return out
 
     def check_mid_day(self, model_key: str) -> tuple[bool, str]:
         """하루 도중의 비상 점검. 투영이 크게 빗나갔을 때만 걸린다.

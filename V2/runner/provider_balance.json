@@ -1,0 +1,12 @@
+{
+  "_설명": "본실험 시작 시점의 계정별 선불 잔액. 리허설과 보정에 쓴 돈은 빠진 금액을 적는다. 후불 계정은 null. 원화는 {\"krw\": 5000}처럼 적고 부가세 포함 금액으로 적는다. 러너는 잔액의 90%를 가용으로 보고, 하루 예약이 가용을 넘는 날부터 그 모델을 시작하지 않는다.",
+  "as_of_kst": null,
+  "balances": {
+    "ANTHROPIC_API_KEY": null,
+    "DEEPSEEK_API_KEY": null,
+    "OPENAI_API_KEY": null,
+    "DASHSCOPE_API_KEY": null,
+    "GOOGLE_API_KEY": null,
+    "CLOVASTUDIO_API_KEY": null
+  }
+}
